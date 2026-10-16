@@ -9,13 +9,23 @@ INSTALL (about 2 minutes)
 -------------------------
 1. Double-click "Closet-1.0.0-universal.dmg". A window opens.
 2. Drag the Closet icon onto the Applications folder.
-3. Open Applications and double-click Closet.
-4. The first time, your Mac says it can't check the app. Click "Done" (NOT "Move to Trash").
-   It says this because the app isn't sold through Apple, not because anything is wrong.
-5. Open System Settings > Privacy & Security, scroll down to
-   "Closet was blocked to protect your Mac" and click "Open Anyway". Enter your password.
-6. Closet opens. From now on it opens like any other app.
-7. You can eject the "Closet" disk on the desktop and delete the .dmg file.
+3. The FIRST time only, open it like this (Apple blocks apps that aren't from the App Store
+   if you just double-click them):
+   - Open Finder > Applications.
+   - Right-click (or hold Control and click) Closet, then choose "Open".
+   - A warning appears. Click "Open".
+   If your Mac only shows "OK" or "Done" (no Open button):
+   - Click OK / Done.
+   - Open System Settings > Privacy & Security, scroll to the bottom, and click
+     "Open Anyway" next to "Closet was blocked". Enter your password, then click Open.
+   This happens because the app isn't sold through Apple, not because anything is wrong.
+4. Closet opens. From now on, open it like any other app.
+5. You can eject the "Closet" disk on the desktop and delete the .dmg and .zip files.
+
+STILL WON'T OPEN?
+   Open the Terminal app (Applications > Utilities > Terminal), paste this line and press Return:
+      xattr -dr com.apple.quarantine /Applications/Closet.app
+   It removes the "downloaded from the internet" mark from Closet only. Then open Closet again.
 
 
 GETTING STARTED

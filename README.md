@@ -25,8 +25,10 @@ the list of folders above.
    **READ ME FIRST** file. Follow READ ME FIRST; it takes about 2 minutes.
 
 The first time you open it, your computer warns that it can't check the app, because it isn't
-sold through Apple or Microsoft. READ ME FIRST shows the two clicks to open it anyway:
-- **Mac:** System Settings → Privacy & Security → **Open Anyway**.
+sold through Apple or Microsoft. To open it anyway:
+- **Mac:** in **Applications**, **right-click Closet → Open → Open**. If there's no Open button:
+  System Settings → Privacy & Security → **Open Anyway**. Still blocked? In Terminal, run
+  `xattr -dr com.apple.quarantine /Applications/Closet.app`, then open it again.
 - **Windows:** **More info** → **Run anyway**.
 
 ### On an iPhone
@@ -151,10 +153,11 @@ the first time. It's safe to open:
 
 **Mac**
 1. Open the `.dmg` and drag **Closet** into **Applications**.
-2. Open Closet. macOS says it can't check it → click **Done** (not "Move to Trash").
-3. Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to
-   "Closet was blocked", then confirm.
-4. From then on it opens normally.
+2. First time only: in Applications, **right-click Closet → Open**, then **Open** in the warning.
+3. If the warning has no Open button (only OK/Done): **System Settings → Privacy & Security →
+   Open Anyway**.
+4. Last resort: `xattr -dr com.apple.quarantine /Applications/Closet.app` in Terminal.
+5. From then on it opens normally.
 
 **Windows**
 1. Run `Closet Setup ….exe`.
