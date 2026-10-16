@@ -1,0 +1,59 @@
+CLOSET FOR MAC
+==============
+
+Closet keeps your clothes, outfits and a calendar of what you wore, all on this Mac.
+No account, no sign-up, nothing online. Needs macOS 12 (Monterey) or newer; works on Intel and Apple-chip Macs.
+
+
+INSTALL (about 2 minutes)
+-------------------------
+1. Double-click "Closet-1.0.0-universal.dmg". A window opens.
+2. Drag the Closet icon onto the Applications folder.
+3. Open Applications and double-click Closet.
+4. The first time, your Mac says it can't check the app. Click "Done" (NOT "Move to Trash").
+   It says this because the app isn't sold through Apple, not because anything is wrong.
+5. Open System Settings > Privacy & Security, scroll down to
+   "Closet was blocked to protect your Mac" and click "Open Anyway". Enter your password.
+6. Closet opens. From now on it opens like any other app.
+7. You can eject the "Closet" disk on the desktop and delete the .dmg file.
+
+
+GETTING STARTED
+---------------
+- Profile: type your name and pick a picture and a color.
+- Add clothes: choose a photo of one piece of clothing (iPhone HEIC photos work too).
+  The background is removed for you. Fix it with Erase / Restore if needed, then Done.
+  Add a name and tags (type, color, season...) and Save item.
+  Tip: photos on a plain floor, bed or wall cut out best.
+- Outfits > New: add pieces from your closet and drag, resize and turn them on the board.
+- Today: plan or log what you wear each day, rate it and react (Loved it, Comfy...).
+- Calendar: see every day's outfit. Stats: what you wear most and least.
+
+
+WHERE YOUR CLOSET IS SAVED
+--------------------------
+Everything stays on this Mac, in:
+   (your user folder) > Library > Application Support > Closet > closet
+It holds closet.json (your items, outfits, calendar and settings) and a photos folder.
+
+To see it: Profile > Closet file > Show folder.
+To keep it somewhere else (e.g. Documents or iCloud Drive): Profile > Closet file >
+"Change folder...". Your closet and photos are moved there.
+If you use iCloud Drive, only open Closet on one Mac at a time.
+
+
+KEEP A COPY (do this now and then!)
+-----------------------------------
+Your closet is only on this Mac. If the Mac is lost or erased, so is your closet.
+Profile > Closet file > Export closet saves everything as ONE .zip file.
+Put it in iCloud Drive or Google Drive, or email it to yourself.
+
+Moving to a new computer? Install Closet there and use Profile > Closet file >
+Import a closet with that .zip file.
+
+
+UPDATING OR REMOVING
+--------------------
+Update: install the new version the same way. Your closet is kept.
+Remove: drag Closet from Applications to the Trash. Your closet folder is NOT deleted
+(delete the folder above too if you want it gone).

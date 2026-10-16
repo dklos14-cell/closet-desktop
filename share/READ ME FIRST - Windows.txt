@@ -1,0 +1,57 @@
+CLOSET FOR WINDOWS
+==================
+
+Closet keeps your clothes, outfits and a calendar of what you wore, all on this PC.
+No account, no sign-up, nothing online. Works on Windows 10 and 11 (64-bit).
+
+
+INSTALL (about 2 minutes)
+-------------------------
+1. Double-click "Closet Setup 1.0.0.exe".
+2. If a blue box says "Windows protected your PC", click "More info", then "Run anyway".
+   It says this because the app isn't sold through Microsoft, not because anything is wrong.
+3. Choose whether to install it just for you, pick a folder (the suggested one is fine),
+   then click Install, then Finish.
+4. Closet opens. Next time, use the Closet shortcut on the desktop or in the Start menu.
+
+
+GETTING STARTED
+---------------
+- Profile: type your name and pick a picture and a color.
+- Add clothes: choose a photo of one piece of clothing (iPhone HEIC photos work too).
+  The background is removed for you. Fix it with Erase / Restore if needed, then Done.
+  Add a name and tags (type, color, season...) and Save item.
+  Tip: photos on a plain floor, bed or wall cut out best.
+- Outfits > New: add pieces from your closet and drag, resize and turn them on the board.
+- Today: plan or log what you wear each day, rate it and react (Loved it, Comfy...).
+- Calendar: see every day's outfit. Stats: what you wear most and least.
+
+
+WHERE YOUR CLOSET IS SAVED
+--------------------------
+Everything stays on this PC, in:
+   C:\Users\(your name)\AppData\Roaming\Closet\closet
+It holds closet.json (your items, outfits, calendar and settings) and a photos folder.
+(AppData is hidden: type %APPDATA%\Closet into the File Explorer address bar to get there.)
+
+To see it: Profile > Closet file > Show folder.
+To keep it somewhere else (e.g. Documents or OneDrive): Profile > Closet file >
+"Change folder...". Your closet and photos are moved there.
+If you use OneDrive, only open Closet on one PC at a time.
+
+
+KEEP A COPY (do this now and then!)
+-----------------------------------
+Your closet is only on this PC. If the PC breaks or is reset, so is your closet.
+Profile > Closet file > Export closet saves everything as ONE .zip file.
+Put it in OneDrive or Google Drive, or email it to yourself.
+
+Moving to a new computer? Install Closet there and use Profile > Closet file >
+Import a closet with that .zip file.
+
+
+UPDATING OR REMOVING
+--------------------
+Update: run the new Setup the same way. Your closet is kept.
+Remove: Settings > Apps > Installed apps > Closet > Uninstall. Your closet folder is NOT
+deleted (delete the folder above too if you want it gone).

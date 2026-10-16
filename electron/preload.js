@@ -1,0 +1,15 @@
+// The only things the app page may ask the computer for (see src/lib/desktop.ts).
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('closetDesktop', {
+  loadDb: () => ipcRenderer.invoke('db:load'),
+  saveDb: (json) => ipcRenderer.invoke('db:save', json),
+  savePhoto: (name, bytes) => ipcRenderer.invoke('photo:save', name, bytes),
+  readPhoto: (name) => ipcRenderer.invoke('photo:read', name),
+  deletePhoto: (name) => ipcRenderer.invoke('photo:delete', name),
+  exportFile: (defaultName, bytes) => ipcRenderer.invoke('file:export', defaultName, bytes),
+  importFile: () => ipcRenderer.invoke('file:import'),
+  openDataFolder: () => ipcRenderer.invoke('folder:open'),
+  getDataFolder: () => ipcRenderer.invoke('folder:get'),
+  changeDataFolder: (useDefault) => ipcRenderer.invoke('folder:change', useDefault),
+});

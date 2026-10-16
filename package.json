@@ -1,0 +1,110 @@
+{
+  "name": "closet-desktop",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "dependencies": {
+    "@expo/ui": "~57.0.23",
+    "@rbayuokt/expo-background-removal": "0.1.0",
+    "eslint-config-expo": "~57.0.2",
+    "expo": "~57.0.28",
+    "expo-constants": "~57.0.21",
+    "expo-dev-client": "~57.0.20",
+    "expo-device": "~57.0.2",
+    "expo-file-system": "~57.0.7",
+    "expo-font": "~57.0.4",
+    "expo-glass-effect": "~57.0.4",
+    "expo-image": "~57.0.5",
+    "expo-image-manipulator": "~57.0.21",
+    "expo-image-picker": "~57.0.20",
+    "expo-linking": "~57.0.12",
+    "expo-router": "~57.0.26",
+    "expo-splash-screen": "~57.0.10",
+    "expo-sqlite": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "expo-symbols": "~57.0.3",
+    "expo-system-ui": "~57.0.4",
+    "expo-web-browser": "~57.0.3",
+    "fflate": "^0.8.3",
+    "heic-to": "^1.6.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "~57.0.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "web": "expo start --web",
+    "lint": "expo lint",
+    "build:app": "expo export --platform web --clear --output-dir dist",
+    "desktop": "npm run build:app && electron electron/main.js",
+    "dist:mac": "npm run build:app && electron-builder --mac",
+    "dist:win": "npm run build:app && electron-builder --win",
+    "dist": "npm run build:app && electron-builder --mac --win",
+    "share": "sh scripts/make-share-zips.sh"
+  },
+  "private": true,
+  "productName": "Closet",
+  "description": "Closet: your wardrobe, outfits and calendar, saved on this computer.",
+  "author": "Danny",
+  "build": {
+    "appId": "com.dklos14.closet",
+    "productName": "Closet",
+    "copyright": "Danny",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "!node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "icon": "assets/images/icon.png",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.lifestyle",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Closet"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Closet"
+    }
+  }
+}
