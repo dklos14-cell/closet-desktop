@@ -1,11 +1,17 @@
-/** What the desktop shell (electron/preload.js) lets the app do on this computer. */
-type DesktopBridge = {
+import { browserBridge, photoUrls } from '@/lib/browser-store';
+
+/**
+ * Where the closet is kept. In the desktop app (Electron) these functions come from
+ * electron/preload.js and use the closet folder; on a phone or in a browser, browser-store.ts
+ * keeps the closet in the browser's own storage on that device.
+ */
+export type DesktopBridge = {
   loadDb(): Promise<string | null>;
   saveDb(json: string): Promise<void>;
   savePhoto(name: string, bytes: Uint8Array): Promise<void>;
   readPhoto(name: string): Promise<Uint8Array>;
   deletePhoto(name: string): Promise<void>;
-  /** Asks where to save; returns the chosen path, or null if cancelled. */
+  /** Asks where to save (desktop) or downloads it (phone); returns where it went, or null if cancelled. */
   exportFile(defaultName: string, bytes: Uint8Array): Promise<string | null>;
   /** Asks for a file; returns its bytes, or null if cancelled. */
   importFile(): Promise<Uint8Array | null>;
@@ -22,12 +28,14 @@ declare global {
   }
 }
 
+/** True in the Mac / Windows app, false on a phone or in a browser. */
+export const isDesktop = typeof window !== 'undefined' && !!window.closetDesktop;
+
 export function desktop(): DesktopBridge {
-  if (!window.closetDesktop) throw new Error('This page only works inside the Closet app.');
-  return window.closetDesktop;
+  return window.closetDesktop ?? browserBridge;
 }
 
 /** Where the app shows a stored picture from. */
 export function photoUrl(name: string): string {
-  return `photo://local/${encodeURIComponent(name)}`;
+  return isDesktop ? `photo://local/${encodeURIComponent(name)}` : (photoUrls.get(name) ?? '');
 }

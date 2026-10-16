@@ -1,19 +1,71 @@
-# Closet for Mac and Windows (closet-desktop)
+# Closet
 
-The Closet app as a normal computer program. Everything the website does is here (Today, closet,
-cut-out editor, outfits and the outfit board, favorites, calendar, repeating events, stats, tags,
-profile, weather), but:
+Your clothes, outfits and a calendar of what you wore, kept **on your own device**. No account,
+no login, nothing stored online, nothing to pay for.
 
-- **No account and no login.** It opens straight to your closet.
-- **Your closet is saved on the computer**, not online. No storage limits, nothing to pay for.
-- **Works without internet** (only the weather card needs a connection).
-- **iPhone photos (HEIC) work**: they're turned into JPEG when you pick them.
-- **Export / Import a closet file** (Profile → Closet file) to keep a copy, email it, or move it
-  to another computer or to the Closet website and back.
-
-This folder started as a copy of `../closet-app`. Changes to one don't appear in the other.
+- **Mac and Windows**: a normal program you install.
+- **iPhone and Android**: open the Closet link and add it to your home screen. It works offline.
+- Move a closet between devices with one **closet file** (Profile → Closet file → Export / Import).
 
 ---
+
+## 📥 Install Closet (no coding needed)
+
+You don't need to understand anything else on this page. Ignore the green **Code** button and
+the list of folders above.
+
+### On a Mac or Windows PC
+
+1. Open the **[latest release](https://github.com/dklos14-cell/closet-desktop/releases/latest)**
+   (also under **Releases** on the right side of this page).
+2. Under **Assets**, click the file for your computer to download it:
+   - **Closet.for.Mac.zip**: any Mac with macOS 12 (Monterey) or newer
+   - **Closet.for.Windows.zip**: Windows 10 or 11
+3. Open the downloaded zip (double-click it). Inside is the installer and a
+   **READ ME FIRST** file. Follow READ ME FIRST; it takes about 2 minutes.
+
+The first time you open it, your computer warns that it can't check the app, because it isn't
+sold through Apple or Microsoft. READ ME FIRST shows the two clicks to open it anyway:
+- **Mac:** System Settings → Privacy & Security → **Open Anyway**.
+- **Windows:** **More info** → **Run anyway**.
+
+### On an iPhone
+
+1. Open the Closet link (ask the person who shared this page) in **Safari**.
+2. Tap **Share** (the square with the arrow) → **Add to Home Screen** → **Add**.
+3. Open Closet **from the new icon** and use it from there. A closet started in a Safari tab stays
+   in Safari, separate from the icon's.
+
+### On an Android phone
+
+1. Open the Closet link in **Chrome**.
+2. Tap **⋮** → **Add to Home screen** (or **Install app**).
+3. Open Closet from the new icon.
+
+### Where your closet is saved
+
+| Device | Where |
+|---|---|
+| Mac | `~/Library/Application Support/Closet/closet/`, or a folder you choose |
+| Windows | `%APPDATA%\Closet\closet\`, or a folder you choose |
+| iPhone / Android | Inside the Closet app's own storage on the phone |
+
+Your closet is **only on that device**. Export a copy now and then (Profile → Closet file →
+**Export closet**) and keep the file in iCloud Drive, Google Drive or an email to yourself.
+That file is also how you move your closet to a new phone or computer (**Import a closet**).
+
+On a phone, deleting the Closet icon or clearing Safari / Chrome website data deletes the closet,
+so export first.
+
+---
+
+# For the developer
+
+Everything below is about building and changing the app.
+
+This folder started as a copy of `../closet-app` (the old Supabase website). The same code now
+builds both the desktop app (Electron, closet saved in a folder) and the phone version (a website
+you install to the home screen, closet saved in the browser's IndexedDB on the phone).
 
 ## Where the closet is kept
 
@@ -55,7 +107,7 @@ computer → phone.
 
 ---
 
-## For you (the developer)
+## Building and sharing the desktop app
 
 ### Run it from the code
 
@@ -127,15 +179,46 @@ rows by id.
 
 ---
 
+## The phone version
+
+The same app, built as a website (`npm run build:app` → `dist/`) and hosted for free on EAS
+Hosting. There's no server or database behind it; the hosting only hands out the app's files.
+
+- **Closet storage:** `src/lib/browser-store.ts` keeps `closet.json` and the photos in the phone's
+  IndexedDB and asks the browser to keep it (`navigator.storage.persist()`).
+- **Offline:** `public/sw.js` (a service worker) saves the app's files on the phone. Pages come
+  from the internet when online, so a new version arrives on the next open with signal.
+- **Install:** `public/index.html` (page template), `public/manifest.webmanifest` and the icons in
+  `public/` make Add to Home Screen work. `src/components/install-hint.tsx` tells iPhone users
+  in Safari to install first.
+- **Photos:** iPhone Safari opens HEIC itself; Chrome/Android get them converted to JPEG.
+- **Export** downloads the closet .zip (iPhone: Files → Downloads); **Import** picks one.
+
+Publish it:
+
+```bash
+npm run deploy:phone-test   # a test link (closet-app--xxxx.expo.app), the live site is untouched
+npm run deploy:phone        # the real link, https://closet-app.expo.app (replaces the old website!)
+```
+
+`app.json` still points at the old website's EAS project, so `deploy:phone` replaces the Supabase
+website at closet-app.expo.app. Anyone using that website should **Download my closet** there
+first, then **Import a closet** in the new version.
+
+Offline mode only starts on the published (https) site, not with `npm run web`.
+
 ## Project layout
 
 ```
 electron/
   main.js          the window, the closet folder, Export/Import dialogs, app:// and photo:// links
   preload.js       the only computer functions the app page may use
+public/            phone install + offline files (index.html template, manifest, sw.js, icons)
 src/
+  lib/browser-store.ts  phone version: closet in IndexedDB, Export = download, Import = file picker
+  components/install-hint.tsx  "Install Closet first" banner for iPhone Safari
   lib/db.ts        the closet in memory + saving closet.json; deleting, wear counts, monthly clean-up
-  lib/desktop.ts   types for the preload functions; photoUrl()
+  lib/desktop.ts   desktop() = the Electron functions, or browser-store on a phone; photoUrl()
   lib/closet-file.ts  Export / Import of the closet .zip
   lib/pick-image.ts   choosing a photo; HEIC → JPEG (the converter loads only when needed)
   lib/items.ts, outfits.ts, calendar.ts, recurring.ts, tag-store.tsx, profile-store.tsx
