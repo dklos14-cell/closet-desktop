@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type PointerEvent,
-  type WheelEvent,
 } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -15,6 +14,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { defringe, removeGapAt, removePieceAt, removeStrayBits, trimEdges, unmixEdges } from '@/lib/cutout/islands';
 import { subtractBackground } from '@/lib/cutout/subtract';
 import { showMessage } from '@/lib/dialogs';
+import { useCommands } from '@/lib/commands';
+import { isTyping, MOD } from '@/lib/keys';
 import { toImageBlob } from '@/lib/web-image';
 
 import type { CutoutStepProps } from './cutout-step';
@@ -392,7 +393,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
   function moveCursor(p: Point | null) {
     const c = cursorRef.current;
     if (!c) return;
-    if (!p || tool === 'move' || tool === 'wand' || tool === 'gap') {
+    if (!p || tool === 'move' || tool === 'wand' || tool === 'gap' || spaceHeld) {
       c.style.display = 'none';
       return;
     }
@@ -428,7 +429,8 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     }
     if (pointers.current.size > 2) return;
 
-    if (tool === 'move' || e.button === 1) {
+    // Move tool, the middle mouse button, or holding Space: drag the photo around.
+    if (tool === 'move' || e.button === 1 || spaceHeld) {
       gesture.current = { kind: 'pan', start: p, from: view.current };
     } else if (tool === 'wand') {
       pushUndo();
@@ -505,10 +507,71 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     if (e.pointerType !== 'mouse') moveCursor(null);
   }
 
-  function onWheel(e: WheelEvent<HTMLDivElement>) {
+  // Trackpad: two-finger scroll moves the photo, pinch zooms. Mouse: ⌘/Ctrl + wheel zooms.
+  const onWheel = useEffectEvent((e: globalThis.WheelEvent) => {
+    e.preventDefault();
     if (!ready) return;
-    zoomAround(local(e), view.current, view.current.scale * Math.exp(-e.deltaY * 0.0015));
-  }
+    const vp = viewportRef.current!;
+    const r = vp.getBoundingClientRect();
+    const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    // A pinch arrives as a wheel event with ctrlKey set.
+    if (e.ctrlKey || e.metaKey) {
+      const step = Math.max(-60, Math.min(60, e.deltaY));
+      zoomAround(at, view.current, view.current.scale * Math.exp(-step * 0.01));
+    } else {
+      applyView({ ...view.current, x: view.current.x - e.deltaX, y: view.current.y - e.deltaY });
+    }
+  });
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const listener = (e: globalThis.WheelEvent) => onWheel(e);
+    vp.addEventListener('wheel', listener, { passive: false });
+    return () => vp.removeEventListener('wheel', listener);
+  }, []);
+
+  // Keyboard shortcuts (listed under the toolbar).
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (isTyping(e) || e.altKey || e.ctrlKey || e.metaKey) return; // ⌘Z / ⌘= etc. come from the menu
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      setSpaceHeld(true);
+    } else if (k === 'e') setTool('erase');
+    else if (k === 'r') setTool('restore');
+    else if (k === 'w') setTool('wand');
+    else if (k === 'g') setTool('gap');
+    else if (k === 'm' || k === 'h') setTool('move');
+    else if (k === '[') setBrush((b) => Math.max(8, b - 4));
+    else if (k === ']') setBrush((b) => Math.min(80, b + 4));
+    else if (k === 'f' || k === '0') fit();
+    else if (k === '=' || k === '+') zoomBy(1.5);
+    else if (k === '-') zoomBy(1 / 1.5);
+    else if (k === 'enter') finish();
+    else if (k === 'escape') onCancel();
+    else return;
+    e.preventDefault();
+  });
+  useCommands((command) => {
+    if (command === 'undo') popUndo();
+    else if (command === 'zoom-in') zoomBy(1.5);
+    else if (command === 'zoom-out') zoomBy(1 / 1.5);
+    else if (command === 'zoom-fit') fit();
+    else return command === 'redo'; // no redo here, but don't pass it to a text box either
+    return true;
+  });
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => onKey(e);
+    const up = (e: KeyboardEvent) => {
+      if (e.key === ' ') setSpaceHeld(false);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
 
   function zoomBy(factor: number) {
     const vp = viewportRef.current!;
@@ -596,14 +659,14 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
         onPointerLeave={(e) => {
           if (e.pointerType === 'mouse') moveCursor(null);
         }}
-        onWheel={onWheel}
         style={{
           ...checkerboard(theme.backgroundElement),
           flex: 1,
           position: 'relative',
           overflow: 'hidden',
           touchAction: 'none',
-          cursor: tool === 'move' ? 'grab' : tool === 'wand' ? 'crosshair' : 'none',
+          // Always show the pointer (the brush circle is drawn around it for Erase / Restore).
+          cursor: tool === 'move' || spaceHeld ? 'grab' : 'crosshair',
         }}>
         <canvas
           ref={viewRef}
@@ -653,6 +716,10 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
           <Chip text="+" selected={false} onPress={() => zoomBy(1.5)} />
           <Slider label="Brush size" min={8} max={80} step={1} value={brush} onChange={setBrush} />
         </View>
+        <Text style={[styles.shortcuts, { color: theme.textSecondary }]}>
+          Pinch or {MOD}+scroll to zoom · two-finger scroll or hold Space to move · E erase · R restore ·
+          W wand · G gap · [ ] brush size · {MOD}Z undo · F fit · Enter done · Esc cancel
+        </Text>
         <Pressable onPress={() => setMore((m) => !m)} hitSlop={6} accessibilityRole="button">
           <Text style={[styles.moreToggle, { color: theme.tint }]}>
             {more ? 'Fewer options ▴' : 'More options ▾'}
@@ -780,6 +847,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
   slider: { flex: 1, minWidth: 120, gap: 2 },
   sliderLabel: { fontSize: 12, fontWeight: '600' },
+  shortcuts: { fontSize: 12, lineHeight: 17 },
   moreToggle: { fontSize: 14, fontWeight: '600' },
   more: { gap: Spacing.two },
 });

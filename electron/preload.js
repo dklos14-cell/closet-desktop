@@ -12,4 +12,10 @@ contextBridge.exposeInMainWorld('closetDesktop', {
   openDataFolder: () => ipcRenderer.invoke('folder:open'),
   getDataFolder: () => ipcRenderer.invoke('folder:get'),
   changeDataFolder: (useDefault) => ipcRenderer.invoke('folder:change', useDefault),
+  /** Menu commands (see src/lib/commands.ts). Returns a function that stops listening. */
+  onCommand: (callback) => {
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('command', listener);
+    return () => ipcRenderer.removeListener('command', listener);
+  },
 });

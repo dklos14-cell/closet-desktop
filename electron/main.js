@@ -6,7 +6,7 @@
 // The closet folder is <user data>/closet unless the user picked another one (Profile → Closet
 // file → Change folder), which is remembered in <user data>/settings.json.
 // <user data> is ~/Library/Application Support/Closet on a Mac, %APPDATA%\Closet on Windows.
-const { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -199,6 +199,105 @@ function registerIpc() {
   });
 }
 
+/** Sends a menu command (see src/lib/commands.ts) to the window. */
+function send(command) {
+  return (_item, win) => {
+    const target = win ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    target?.webContents.send('command', command);
+  };
+}
+
+function buildMenu() {
+  const mac = process.platform === 'darwin';
+  const go = (label, accelerator, command) => ({ label, accelerator, click: send(command) });
+  const template = [
+    ...(mac
+      ? [
+          {
+            label: 'Closet',
+            submenu: [
+              { role: 'about' },
+              { label: 'Check for Updates…', click: send('check-updates') },
+              { type: 'separator' },
+              go('Settings…', 'CmdOrCtrl+,', 'go:profile'),
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          },
+        ]
+      : []),
+    {
+      label: 'File',
+      submenu: [
+        go('Add Clothes…', 'CmdOrCtrl+N', 'new-item'),
+        go('New Outfit', 'CmdOrCtrl+Shift+N', 'new-outfit'),
+        go('Pick an Outfit for Me', 'CmdOrCtrl+Shift+P', 'pick-outfit'),
+        { type: 'separator' },
+        go('Export Closet…', 'CmdOrCtrl+E', 'export'),
+        go('Import a Closet…', 'CmdOrCtrl+Shift+I', 'import'),
+        go('Show Closet Folder', undefined, 'show-folder'),
+        ...(mac ? [] : [{ type: 'separator' }, go('Settings', 'Ctrl+,', 'go:profile'), { role: 'quit' }]),
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        // Undo/Redo go to the app: the cut-out editor and text boxes each handle them.
+        go('Undo', 'CmdOrCtrl+Z', 'undo'),
+        go('Redo', mac ? 'Cmd+Shift+Z' : 'Ctrl+Y', 'redo'),
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        go('Find in Closet', 'CmdOrCtrl+F', 'find'),
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        // Zoom the photo or outfit being edited (not the whole window).
+        go('Zoom In', 'CmdOrCtrl+=', 'zoom-in'),
+        go('Zoom Out', 'CmdOrCtrl+-', 'zoom-out'),
+        go('Fit', 'CmdOrCtrl+0', 'zoom-fit'),
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        { role: 'reload', accelerator: 'CmdOrCtrl+Shift+R' },
+        { role: 'toggleDevTools', accelerator: mac ? 'Alt+Cmd+I' : 'Ctrl+Shift+J' },
+      ],
+    },
+    {
+      label: 'Go',
+      submenu: [
+        go('Today', 'CmdOrCtrl+1', 'go:index'),
+        go('Closet', 'CmdOrCtrl+2', 'go:closet'),
+        go('Outfits', 'CmdOrCtrl+3', 'go:outfits'),
+        go('Favorites', 'CmdOrCtrl+4', 'go:favorites'),
+        go('Calendar', 'CmdOrCtrl+5', 'go:calendar'),
+        go('Stats', 'CmdOrCtrl+6', 'go:stats'),
+        go('Tags', 'CmdOrCtrl+7', 'go:tags'),
+        go('Profile', 'CmdOrCtrl+8', 'go:profile'),
+        { type: 'separator' },
+        { label: 'Back', accelerator: 'CmdOrCtrl+[', click: (_i, win) => win?.webContents.navigationHistory.goBack() },
+      ],
+    },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        go('Keyboard Shortcuts', 'CmdOrCtrl+/', 'shortcuts'),
+        ...(mac ? [] : [{ label: 'Check for Updates…', click: send('check-updates') }]),
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -239,6 +338,7 @@ app.whenReady().then(() => {
   protocol.handle('app', serveApp);
   protocol.handle('photo', servePhoto);
   registerIpc();
+  buildMenu();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

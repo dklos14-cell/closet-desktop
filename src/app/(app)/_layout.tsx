@@ -1,5 +1,7 @@
+import { router } from 'expo-router';
 import { Drawer, DrawerContentScrollView, DrawerItem, type DrawerContentComponentProps } from 'expo-router/drawer';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import { useEffect } from 'react';
 import { Platform, StyleSheet, Text, useWindowDimensions, View, type ColorValue } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
@@ -7,6 +9,11 @@ import { MenuButton, SIDEBAR_WIDTH } from '@/components/menu-button';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { startAddItem } from '@/lib/add-item';
+import { exportCloset, importCloset } from '@/lib/closet-file';
+import { listenToMenu, SHORTCUTS_HELP } from '@/lib/commands';
+import { desktop } from '@/lib/desktop';
+import { confirmAction, showMessage } from '@/lib/dialogs';
+import { MOD } from '@/lib/keys';
 import { useProfile } from '@/lib/profile-store';
 
 /** The menu, top to bottom. `route` is a drawer screen; `action` runs something instead. */
@@ -30,8 +37,36 @@ const MENU: {
 /** Sections that are stacks of screens (list → detail / editor). */
 const STACKS = new Set(['closet', 'outfits', 'calendar', 'tags']);
 
+/** What the menu bar's commands do when no open screen handles them (see src/lib/commands.ts). */
+function runCommand(command: string) {
+  if (command.startsWith('go:')) {
+    const route = command.slice(3);
+    router.navigate(route === 'index' ? '/' : (`/${route}` as '/'));
+  } else if (command === 'new-item') startAddItem();
+  else if (command === 'new-outfit') router.push('/outfits/edit', { withAnchor: true });
+  else if (command === 'find') {
+    router.navigate('/closet');
+    setTimeout(() => document.querySelector<HTMLInputElement>('input[placeholder^="🔍"]')?.focus(), 400);
+  } else if (command === 'export') {
+    exportCloset(() => {})
+      .then((path) => path && showMessage('Closet exported', `Saved to ${path}`))
+      .catch((e) => showMessage('Export failed', e.message));
+  } else if (command === 'import') {
+    confirmAction(
+      'Import a closet?',
+      'Everything in the file is added to this closet. Items and outfits that are already here are updated to the version in the file.',
+      'Choose file',
+    )
+      .then((ok) => (ok ? importCloset(() => {}) : null))
+      .then((summary) => summary && window.location.reload())
+      .catch((e) => showMessage('Import failed', e.message));
+  } else if (command === 'show-folder') desktop().openDataFolder();
+  else if (command === 'shortcuts') showMessage('Keyboard shortcuts', SHORTCUTS_HELP(MOD));
+}
+
 export default function AppLayout() {
   const theme = useTheme();
+  useEffect(() => listenToMenu(runCommand), []);
   const { width } = useWindowDimensions();
   const sidebar = width >= SIDEBAR_WIDTH; // wide screens: the menu stays open on the left
 

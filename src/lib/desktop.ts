@@ -14,6 +14,8 @@ export type DesktopBridge = {
   getDataFolder(): Promise<{ path: string; isDefault: boolean; canChange: boolean }>;
   /** Moves the closet to a folder the user picks (or back to the default) and restarts the app. */
   changeDataFolder(useDefault: boolean): Promise<boolean>;
+  /** Menu commands; returns a function that stops listening. */
+  onCommand(callback: (command: string) => void): () => void;
 };
 
 declare global {
