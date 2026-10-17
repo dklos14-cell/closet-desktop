@@ -13,8 +13,11 @@ import { desktop } from '@/lib/desktop';
 import { confirmAction, showMessage } from '@/lib/dialogs';
 import { deleteItem, fetchItems, updateItem, type ItemWithUrl } from '@/lib/items';
 import { contextMenu, MOD } from '@/lib/keys';
-import { label, pickFields, WEAR_STATUSES } from '@/lib/tags';
+import { label, pickFields, TAG_KIND_TITLES, WEAR_STATUSES, type TagKind } from '@/lib/tags';
 import { useTags } from '@/lib/tag-store';
+
+/** Tag groups offered in an item's right-click menu. */
+const TAG_MENU_KINDS: TagKind[] = ['type', 'color', 'pattern', 'style', 'season', 'occasion'];
 
 /** Aim for tiles about this wide. */
 const TARGET_TILE_WIDTH = 150;
@@ -26,7 +29,7 @@ export default function ClosetScreen() {
   // Start from the last-loaded closet (instant), then refresh.
   const [items, setItems] = useState<ItemWithUrl[]>(() => peek<ItemWithUrl[]>('items') ?? []);
   const [loading, setLoading] = useState(() => !peek('items'));
-  const { byId } = useTags();
+  const { byId, ofKind } = useTags();
   // ?tag=<id> (from the Tags screen) opens the closet filtered to that tag.
   const { tag } = useLocalSearchParams<{ tag?: string }>();
   const { visible, filter, setFilter, search, setSearch } = useClosetFilter(items, tag ? [tag] : []);
@@ -48,6 +51,12 @@ export default function ClosetScreen() {
     const choice = await desktop().popupMenu([
       { id: 'open', label: 'Open' },
       { id: 'recut', label: 'Edit cut-out' },
+      { id: 'open', label: 'Edit tags…' },
+      // Quick tagging: tick a tag on or off without opening the item.
+      ...TAG_MENU_KINDS.map((kind) => ({
+        label: TAG_KIND_TITLES[kind],
+        submenu: ofKind(kind).map((t) => ({ id: `tag:${t.id}`, label: t.name, checked: item.tagIds.includes(t.id) })),
+      })),
       {
         label: 'Status',
         submenu: WEAR_STATUSES.map((st) => ({ id: `status:${st}`, label: label(st), checked: item.wear_status === st })),
@@ -57,7 +66,13 @@ export default function ClosetScreen() {
     ]);
     if (choice === 'open') router.push({ pathname: '/closet/[id]', params: { id: item.id } }, { withAnchor: true });
     else if (choice === 'recut') router.push({ pathname: '/closet/recut', params: { id: item.id } }, { withAnchor: true });
-    else if (choice?.startsWith('status:')) {
+    else if (choice?.startsWith('tag:')) {
+      const tagId = choice.slice(4);
+      const tagIds = item.tagIds.includes(tagId) ? item.tagIds.filter((t) => t !== tagId) : [...item.tagIds, tagId];
+      updateItem(item.id, { ...pickFields(item), tagIds })
+        .then(reload)
+        .catch((e) => showMessage('Could not save', e.message));
+    } else if (choice?.startsWith('status:')) {
       const wear_status = choice.slice(7) as ItemWithUrl['wear_status'];
       updateItem(item.id, { ...pickFields(item), wear_status })
         .then(reload)

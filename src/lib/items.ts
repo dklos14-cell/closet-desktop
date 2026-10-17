@@ -55,6 +55,7 @@ export async function saveItem(pngUri: string, fields: ItemFields): Promise<void
     created_at: now(),
     worn_before: 0,
     last_worn_before: null,
+    angles: [],
   });
   db.item_tags = setLinks(db.item_tags, 'item_id', id, 'tag_id', tagIds);
   await saveDb();
@@ -67,7 +68,16 @@ function toItem(db: Db, row: ItemRow): Item {
   return { ...item, tagIds: tagIdsOf(db, row.id) };
 }
 
-export type ItemWithUrl = Item & { imageUrl: string | null };
+export type ItemWithUrl = Item & {
+  imageUrl: string | null;
+  /** Small pictures for the board: the main photo, then the extra angles. */
+  angleUrls: string[];
+};
+
+/** The item's board pictures: main photo first, then its extra angles. */
+export function angleUrlsOf(row: Pick<ItemRow, 'image_path' | 'thumb_path' | 'angles'>): string[] {
+  return [photoUrl(row.thumb_path ?? row.image_path), ...(row.angles ?? []).map((a) => photoUrl(a.thumb_path))];
+}
 
 /** All of the user's items, newest first, each with the URL of its small picture. */
 export async function fetchItems(): Promise<ItemWithUrl[]> {
@@ -75,7 +85,7 @@ export async function fetchItems(): Promise<ItemWithUrl[]> {
   const items = [...db.items].sort((a, b) => b.created_at.localeCompare(a.created_at));
   return remember(
     'items',
-    items.map((row) => ({ ...toItem(db, row), imageUrl: photoUrl(row.thumb_path ?? row.image_path) })),
+    items.map((row) => ({ ...toItem(db, row), imageUrl: photoUrl(row.thumb_path ?? row.image_path), angleUrls: angleUrlsOf(row) })),
   );
 }
 
@@ -90,6 +100,7 @@ export async function fetchItem(id: string): Promise<ItemDetail> {
   return {
     ...toItem(db, row),
     imageUrl: photoUrl(row.image_path),
+    angleUrls: angleUrlsOf(row),
     wear_count: stats?.wear_count ?? 0,
     last_worn: stats?.last_worn ?? null,
   };
@@ -145,7 +156,37 @@ export async function updateItem(id: string, fields: ItemFields): Promise<void> 
 /** Deletes the item (which also removes it from every outfit) and then its pictures. */
 export async function deleteItem(item: Pick<Item, 'id' | 'image_path' | 'thumb_path'>): Promise<void> {
   const db = await getDb();
+  const angles = db.items.find((i) => i.id === item.id)?.angles ?? [];
   removeItem(db, item.id);
   await saveDb();
-  await deletePictures([item.image_path, item.thumb_path]);
+  await deletePictures([item.image_path, item.thumb_path, ...angles.flatMap((a) => [a.image_path, a.thumb_path])]);
+}
+
+/** Adds a cut-out photo of the item from another side (an "angle"). */
+export async function addItemAngle(itemId: string, pngUri: string): Promise<void> {
+  const { path, thumbPath } = await storeItemPicture(pngUri);
+  const db = await getDb();
+  const row = db.items.find((i) => i.id === itemId);
+  if (!row) {
+    await deletePictures([path, thumbPath]);
+    throw new Error('This item no longer exists.');
+  }
+  row.angles = [...(row.angles ?? []), { image_path: path, thumb_path: thumbPath }];
+  await saveDb();
+}
+
+/** Removes extra angle number `n` (1 = the first extra); outfits using it go back to the main photo. */
+export async function removeItemAngle(itemId: string, n: number): Promise<void> {
+  const db = await getDb();
+  const row = db.items.find((i) => i.id === itemId);
+  const gone = row?.angles[n - 1];
+  if (!row || !gone) return;
+  row.angles = row.angles.filter((_, i) => i !== n - 1);
+  for (const l of db.outfit_items) {
+    if (l.item_id !== itemId) continue;
+    if (l.angle === n) l.angle = 0;
+    else if (l.angle > n) l.angle--;
+  }
+  await saveDb();
+  await deletePictures([gone.image_path, gone.thumb_path]);
 }

@@ -13,6 +13,7 @@ import {
   type OutfitRow,
 } from '@/lib/db';
 import { photoUrl } from '@/lib/desktop';
+import { angleUrlsOf } from '@/lib/items';
 import { deletePictures, newPictureName, storePicture, type Thumb } from '@/lib/images';
 import type { Layout } from '@/lib/outfit-board';
 
@@ -49,13 +50,19 @@ function toOutfit(db: Db, row: OutfitRow): Outfit {
 }
 
 /** An item as it appears in an outfit: its picture, tags, and where it sits on the board. */
-export type BoardItem = Thumb & { tagIds: string[]; layout: Layout | null; warmth: string | null };
+export type BoardItem = Thumb & {
+  tagIds: string[];
+  layout: Layout | null;
+  warmth: string | null;
+  /** The item's photos for the board: the main one, then its extra angles. */
+  angleUrls: string[];
+};
 
 export type OutfitWithItems = Outfit & { items: BoardItem[] };
 
 function toLayout(row: OutfitItemRow): Layout | null {
   if (row.pos_x === null || row.pos_y === null) return null; // not placed yet → auto-arrange
-  return { x: row.pos_x, y: row.pos_y, scale: row.scale, rotation: row.rotation, z: row.z };
+  return { x: row.pos_x, y: row.pos_y, scale: row.scale, rotation: row.rotation, z: row.z, angle: row.angle ?? 0, flip: row.flip ?? false };
 }
 
 /** An outfit with its items (small picture, tags, board position) and its tags. */
@@ -76,6 +83,7 @@ export function outfitWithItems(db: Db, row: OutfitRow): OutfitWithItems {
             warmth: item.warmth,
             tagIds: db.item_tags.filter((t) => t.item_id === item.id).map((t) => t.tag_id),
             layout: toLayout(l),
+            angleUrls: angleUrlsOf(item),
           },
         ];
       }),
@@ -148,6 +156,8 @@ export async function saveOutfit(
         scale: l?.scale ?? 0.4,
         rotation: l?.rotation ?? 0,
         z: l?.z ?? 0,
+        angle: l?.angle ?? 0,
+        flip: l?.flip ?? false,
       };
     }),
   ];

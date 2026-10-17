@@ -26,7 +26,10 @@ const MAX_UNDO = 10;
 const MAX_ZOOM = 8; // × the "fit" zoom
 const STRAY_BIT = 0.05; // after erasing, pieces smaller than 5% of the main piece are removed
 
-type Tool = 'erase' | 'restore' | 'wand' | 'gap' | 'move';
+type Tool = 'erase' | 'restore' | 'wand' | 'gap' | 'pen' | 'move';
+/** A pen point; (hx, hy) is its handle (where the curve leaves it). No drag = a sharp corner. */
+type Anchor = { x: number; y: number; hx: number; hy: number };
+const CLOSE_DISTANCE = 10; // screen pixels: clicking this close to the first point closes the shape
 const LIFT = 60; // on phones, the brush sits this many pixels above the fingertip so you can see it
 type Point = { x: number; y: number };
 type View2D = { scale: number; x: number; y: number }; // screen = canvas * scale + (x, y)
@@ -39,6 +42,8 @@ type View2D = { scale: number; x: number; y: number }; // screen = canvas * scal
  *  - Wand: tap a separate piece (a leftover chunk of background) to delete all of it.
  *  - Gap: tap leftover background inside the outline (between legs, inside a strap) to clear
  *    that patch; it spreads over similar colour and stops at the garment's edge.
+ *  - Pen: click along the edge to place points (drag while placing one to bend the line), close
+ *    the shape, then keep / remove / add what's inside it. Sharp, smooth edges like Adobe's pen.
  *  - On phones the brush sits a little above the fingertip, so you can see what you erase.
  *  - After each Erase stroke, tiny pieces cut off from the main item are removed automatically.
  * The mask is an offscreen canvas the size of the output: white = keep, transparent = removed.
@@ -53,6 +58,11 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
   const islands = useRef<{ version: number; labels: Int32Array; sizes: number[]; main: number } | null>(null);
   const hoverPiece = useRef(-2);
   const [extraPieces, setExtraPieces] = useState(0);
+  // Pen: the points placed so far (photo coordinates), drawn on their own screen-sized layer.
+  const penRef = useRef<HTMLCanvasElement>(null);
+  const pen = useRef<{ points: Anchor[]; closed: boolean; mouse: Point | null }>({ points: [], closed: false, mouse: null });
+  const [penState, setPenState] = useState<'empty' | 'drawing' | 'closed'>('empty');
+  const redrawPen = useRef<() => void>(() => {});
   const photo = useRef<HTMLCanvasElement | null>(null);
   const mask = useRef<HTMLCanvasElement | null>(null);
   const scratch = useRef<HTMLCanvasElement | null>(null);
@@ -68,6 +78,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     | { kind: 'pending'; start: Point; brush: Point }
     | { kind: 'pan'; start: Point; from: View2D }
     | { kind: 'pinch'; dist: number; mid: Point; from: View2D }
+    | { kind: 'pen'; start: Point } // placing a pen point; dragging pulls out its curve handle
   >({ kind: 'none' });
 
   const [ready, setReady] = useState(false);
@@ -131,6 +142,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     for (const canvas of [viewRef.current, overlayRef.current]) {
       if (canvas) canvas.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
     }
+    redrawPen.current(); // the pen layer is in screen pixels, so it's drawn again
   }
 
   const fit = useCallback(() => {
@@ -159,7 +171,19 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp || !ready) return;
-    const observer = new ResizeObserver(() => fit());
+    // The photo area changes size with the window, and when the toolbar grows or shrinks (e.g.
+    // a tool's hint appears). Only re-fit if the view is still the fitted one; if you've zoomed
+    // or moved the photo, keep that zoom and position.
+    let size = { w: vp.clientWidth, h: vp.clientHeight };
+    const observer = new ResizeObserver(() => {
+      const next = { w: vp.clientWidth, h: vp.clientHeight };
+      const v = view.current;
+      const fitted = Math.abs(v.scale - fitScale.current) < 1e-6 && Math.abs(v.x - (size.w - (viewRef.current?.width ?? 0) * v.scale) / 2) < 1;
+      if (fitted) fit();
+      // Sideways it stays centred; the top stays put, so a toolbar growing below moves nothing.
+      else applyView({ ...v, x: v.x + (next.w - size.w) / 2 });
+      size = next;
+    });
     observer.observe(vp);
     return () => observer.disconnect();
   }, [ready, fit]);
@@ -395,6 +419,148 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     if (label !== hoverPiece.current) drawOverlay(label);
   }
 
+  // ---- pen ----
+  /** The pen shape as a path in photo coordinates (each piece a curve between two points). */
+  function penPath(points: Anchor[], closed: boolean, map: (p: Point) => Point = (p) => p) {
+    const path = new Path2D();
+    if (points.length === 0) return path;
+    const segment = (a: Anchor, b: Anchor) => {
+      const c1 = map({ x: a.hx, y: a.hy });
+      const c2 = map({ x: 2 * b.x - b.hx, y: 2 * b.y - b.hy }); // b's handle, mirrored to its other side
+      const end = map(b);
+      path.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+    };
+    const start = map(points[0]);
+    path.moveTo(start.x, start.y);
+    for (let i = 1; i < points.length; i++) segment(points[i - 1], points[i]);
+    if (closed) {
+      segment(points[points.length - 1], points[0]);
+      path.closePath();
+    }
+    return path;
+  }
+
+  const toScreen = (c: Point): Point => ({ x: c.x * view.current.scale + view.current.x, y: c.y * view.current.scale + view.current.y });
+
+  /** Draws the pen shape, its points, and a line from the last point to the mouse. */
+  function drawPen() {
+    const c = penRef.current;
+    const vp = viewportRef.current;
+    if (!c || !vp) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = vp.clientWidth;
+    const h = vp.clientHeight;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+      c.style.width = `${w}px`;
+      c.style.height = `${h}px`;
+    }
+    const ctx = c.getContext('2d')!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const { points, closed, mouse } = pen.current;
+    if (points.length === 0) return;
+    const path = penPath(points, closed, toScreen);
+    if (closed) {
+      ctx.fillStyle = 'rgba(32, 138, 239, 0.18)';
+      ctx.fill(path);
+    }
+    // Light line under a dark one: visible on any photo.
+    for (const [color, width] of [['#fff', 3.5], ['#208aef', 1.75]] as const) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke(path);
+    }
+    const last = points[points.length - 1];
+    if (!closed && mouse) {
+      const a = toScreen({ x: last.hx, y: last.hy });
+      const b = toScreen(last);
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#208aef';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.quadraticCurveTo(a.x, a.y, mouse.x, mouse.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const nearFirst = !closed && mouse && points.length >= 3 && dist(mouse, toScreen(points[0])) < CLOSE_DISTANCE;
+    points.forEach((pt, i) => {
+      const s = toScreen(pt);
+      // The handles of a curved point (only for the last one, to keep it uncluttered).
+      if (i === points.length - 1 && (pt.hx !== pt.x || pt.hy !== pt.y)) {
+        const out = toScreen({ x: pt.hx, y: pt.hy });
+        const back = toScreen({ x: 2 * pt.x - pt.hx, y: 2 * pt.y - pt.hy });
+        ctx.strokeStyle = '#208aef';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(back.x, back.y);
+        ctx.lineTo(out.x, out.y);
+        ctx.stroke();
+        for (const q of [out, back]) {
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = '#208aef';
+          ctx.fill();
+        }
+      }
+      const big = i === 0 && nearFirst;
+      ctx.beginPath();
+      ctx.rect(s.x - (big ? 6 : 4), s.y - (big ? 6 : 4), big ? 12 : 8, big ? 12 : 8);
+      ctx.fillStyle = i === 0 ? '#208aef' : '#fff';
+      ctx.fill();
+      ctx.strokeStyle = '#208aef';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+  }
+
+  const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+  useEffect(() => {
+    redrawPen.current = drawPen;
+  });
+
+  function setPen(points: Anchor[], closed: boolean) {
+    pen.current = { ...pen.current, points, closed };
+    setPenState(points.length === 0 ? 'empty' : closed ? 'closed' : 'drawing');
+    drawPen();
+  }
+
+  function closePen() {
+    if (pen.current.points.length >= 3) setPen(pen.current.points, true);
+  }
+
+  /** Backspace: take away the last point (or open a closed shape again). */
+  function removePenPoint() {
+    const { points, closed } = pen.current;
+    if (closed) setPen(points, false);
+    else setPen(points.slice(0, -1), false);
+  }
+
+  /** Uses the closed shape on the cut-out: keep only what's inside, remove it, or add it back. */
+  function applyPen(mode: 'keep' | 'remove' | 'add') {
+    const { points, closed } = pen.current;
+    if (!closed || points.length < 3) return;
+    pushUndo();
+    const ctx = mask.current!.getContext('2d')!;
+    ctx.globalCompositeOperation = mode === 'keep' ? 'destination-in' : mode === 'remove' ? 'destination-out' : 'source-over';
+    ctx.fillStyle = '#fff';
+    ctx.fill(penPath(points, true));
+    ctx.globalCompositeOperation = 'source-over';
+    setPen([], false);
+    maskChanged();
+  }
+
+  // The pen layer is only shown while the Pen is the tool (the shape is kept if you switch away).
+  useEffect(() => {
+    const c = penRef.current;
+    if (c) c.style.display = tool === 'pen' ? 'block' : 'none';
+    if (tool === 'pen') drawPen();
+    // drawPen only reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool]);
+
   function rerunAuto(tol: number) {
     setBusy(true);
     // Let the spinner paint before the (synchronous) cut runs.
@@ -515,6 +681,17 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
       const c = toCanvas(p);
       if (editMask((rgba, w, h) => removePieceAt(rgba, w, h, c.x, c.y)) === 0) popUndo(); // tapped nothing
       gesture.current = { kind: 'none' };
+    } else if (tool === 'pen') {
+      const { points, closed } = pen.current;
+      if (closed) return; // use (or clear) the closed shape first
+      if (points.length >= 3 && dist(p, toScreen(points[0])) < CLOSE_DISTANCE) {
+        closePen();
+        gesture.current = { kind: 'none' };
+        return;
+      }
+      const c = toCanvas(p);
+      setPen([...points, { x: c.x, y: c.y, hx: c.x, hy: c.y }], false);
+      gesture.current = { kind: 'pen', start: p };
     } else if (tool === 'gap') {
       pushUndo();
       const c = toCanvas(p);
@@ -547,6 +724,10 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     if (e.pointerType === 'mouse' || gesture.current.kind === 'stroke' || gesture.current.kind === 'pending')
       moveCursor(brushPoint(e, p));
     if (tool === 'wand' && gesture.current.kind === 'none' && !spaceHeld) hoverWand(p);
+    if (tool === 'pen') {
+      pen.current.mouse = p;
+      drawPen();
+    }
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, p);
     let g = gesture.current;
@@ -558,6 +739,16 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
       const c = toCanvas(brushPoint(e, p));
       paint(g.last, c);
       g.last = c;
+    } else if (g.kind === 'pen') {
+      // Dragging while placing a point bends the line into a curve (a tiny wobble keeps a corner).
+      const pts = pen.current.points;
+      const last = pts[pts.length - 1];
+      if (last && dist(p, g.start) > 3) {
+        const c = toCanvas(p);
+        last.hx = c.x;
+        last.hy = c.y;
+        drawPen();
+      }
     } else if (g.kind === 'pan') {
       applyView({ ...g.from, x: g.from.x + p.x - g.start.x, y: g.from.y + p.y - g.start.y });
     } else if (g.kind === 'pinch' && pointers.current.size === 2) {
@@ -620,6 +811,10 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     else if (k === 'r') setTool('restore');
     else if (k === 'w') setTool('wand');
     else if (k === 'g') setTool('gap');
+    else if (k === 'p') setTool('pen');
+    else if (tool === 'pen' && penState !== 'empty' && (k === 'backspace' || k === 'delete')) removePenPoint();
+    else if (tool === 'pen' && penState === 'drawing' && k === 'enter') closePen();
+    else if (tool === 'pen' && penState === 'closed' && k === 'enter') applyPen('keep');
     else if (k === 'm' || k === 'h') setTool('move');
     else if (k === '[') setBrush((b) => Math.max(8, b - 4));
     else if (k === ']') setBrush((b) => Math.min(80, b + 4));
@@ -636,7 +831,11 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     else if (command === 'zoom-out') zoomBy(1 / 1.5);
     else if (command === 'zoom-fit') fit();
     else if (command === 'save') finish();
-    else if (command === 'escape') onCancel();
+    else if (command === 'escape') {
+      // Esc first clears an unfinished pen shape; only then does it leave the editor.
+      if (pen.current.points.length) setPen([], false);
+      else onCancel();
+    }
     else return command === 'redo'; // no redo here, but don't pass it to a text box either
     return true;
   });
@@ -747,7 +946,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
           overflow: 'hidden',
           touchAction: 'none',
           // Always show the pointer (the brush circle is drawn around it for Erase / Restore).
-          cursor: tool === 'move' || spaceHeld ? 'grab' : tool === 'wand' ? WAND_CURSOR : tool === 'gap' ? GAP_CURSOR : 'crosshair',
+          cursor: tool === 'move' || spaceHeld ? 'grab' : tool === 'wand' ? WAND_CURSOR : tool === 'gap' ? GAP_CURSOR : tool === 'pen' ? PEN_CURSOR : 'crosshair',
         }}>
         <canvas
           ref={viewRef}
@@ -757,6 +956,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
           ref={overlayRef}
           style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', pointerEvents: 'none', display: 'none' }}
         />
+        <canvas ref={penRef} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', display: 'none' }} />
         <div
           ref={cursorRef}
           style={{
@@ -792,6 +992,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
           <Chip text="Restore" selected={tool === 'restore'} onPress={() => setTool('restore')} />
           <Chip text="🪄 Wand" selected={tool === 'wand'} onPress={() => setTool('wand')} />
           <Chip text="🎯 Gap" selected={tool === 'gap'} onPress={() => setTool('gap')} />
+          <Chip text="✒️ Pen" selected={tool === 'pen'} onPress={() => setTool('pen')} />
           <Chip text="Move" selected={tool === 'move'} onPress={() => setTool('move')} />
           <Chip text={`Undo${undoCount ? ` (${undoCount})` : ''}`} selected={false} onPress={popUndo} />
         </View>
@@ -808,6 +1009,32 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
               ? 'No leftover pieces: everything kept is one piece.'
               : `${extraPieces} leftover piece${extraPieces === 1 ? '' : 's'} shown in orange. Click one to delete it (it turns red under the mouse).`}
           </Text>
+        ) : tool === 'pen' ? (
+          <View style={styles.penBar}>
+            <Text style={[styles.hint, { color: theme.text }]}>
+              ✒️{' '}
+              {penState === 'closed'
+                ? 'Shape closed. What should happen inside it?'
+                : penState === 'drawing'
+                  ? 'Keep clicking along the edge (drag to bend). Click the first point or press Enter to close.'
+                  : 'Click along the edge of the item to place points; drag while clicking to curve the line.'}
+            </Text>
+            {penState === 'closed' ? (
+              <View style={styles.row}>
+                <Chip text="Keep inside (Enter)" selected onPress={() => applyPen('keep')} />
+                <Chip text="Remove inside" selected={false} onPress={() => applyPen('remove')} />
+                <Chip text="Add inside" selected={false} onPress={() => applyPen('add')} />
+                <Chip text="Change shape" selected={false} onPress={removePenPoint} />
+                <Chip text="Clear (Esc)" selected={false} onPress={() => setPen([], false)} />
+              </View>
+            ) : penState === 'drawing' ? (
+              <View style={styles.row}>
+                <Chip text="Close shape" selected={false} onPress={closePen} />
+                <Chip text="Remove last point (⌫)" selected={false} onPress={removePenPoint} />
+                <Chip text="Clear (Esc)" selected={false} onPress={() => setPen([], false)} />
+              </View>
+            ) : null}
+          </View>
         ) : tool === 'gap' ? (
           <Text style={[styles.hint, { color: theme.text }]}>
             🎯 Click leftover background inside the outline (between legs, inside a strap) to clear that patch.
@@ -815,7 +1042,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
         ) : null}
         <Text style={[styles.shortcuts, { color: theme.textSecondary }]}>
           Pinch or {MOD}+scroll to zoom · two-finger scroll or hold Space to move · E erase · R restore ·
-          W wand · G gap · [ ] brush size · {MOD}Z undo · F fit · Enter done · Esc cancel
+          W wand · G gap · P pen · [ ] brush size · {MOD}Z undo · F fit · Enter done · Esc cancel
         </Text>
         <Pressable onPress={() => setMore((m) => !m)} hitSlop={6} accessibilityRole="button">
           <Text style={[styles.moreToggle, { color: theme.tint }]}>
@@ -911,6 +1138,17 @@ const WAND_CURSOR = svgCursor(
   7,
   'crosshair',
 );
+const PEN_CURSOR = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
+    <path d="M2 2 L7 15 L13 13 L15 7 Z" fill="#fff" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/>
+    <path d="M2 2 L8.5 8.5" stroke="#000" stroke-width="1.1"/>
+    <circle cx="9" cy="9" r="1.4" fill="#000"/>
+    <path d="M13 13 L22 22" stroke="#000" stroke-width="3" stroke-linecap="round"/>
+  </svg>`,
+  2,
+  2,
+  'crosshair',
+);
 const GAP_CURSOR = svgCursor(
   `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
     <circle cx="13" cy="13" r="9" fill="none" stroke="#fff" stroke-width="4"/>
@@ -970,6 +1208,7 @@ const styles = StyleSheet.create({
   sliderLabel: { fontSize: 12, fontWeight: '600' },
   shortcuts: { fontSize: 12, lineHeight: 17 },
   hint: { fontSize: 14, fontWeight: '600' },
+  penBar: { gap: Spacing.two },
   moreToggle: { fontSize: 14, fontWeight: '600' },
   more: { gap: Spacing.two },
 });

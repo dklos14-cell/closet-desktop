@@ -5,7 +5,17 @@ import type { Tag } from '@/lib/tags';
  * x / y: centre, as a fraction of the board's width / height. scale: item width as a
  * fraction of the board's width. rotation in degrees. z: stacking order (higher = in front).
  */
-export type Layout = { x: number; y: number; scale: number; rotation: number; z: number };
+export type Layout = {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  z: number;
+  /** Which photo of the item: 0 = main, 1… = its extra angles. */
+  angle?: number;
+  /** Mirrored left-right. */
+  flip?: boolean;
+};
 
 export const BOARD_ASPECT = 3 / 4; // width / height
 

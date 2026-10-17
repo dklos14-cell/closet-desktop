@@ -14,6 +14,7 @@ export default function ClosetLayout() {
       <Stack.Screen name="new" options={{ title: 'New item', presentation: 'modal' }} />
       <Stack.Screen name="[id]" options={{ title: 'Item' }} />
       <Stack.Screen name="recut" options={{ title: 'Edit cut-out', presentation: 'modal' }} />
+      <Stack.Screen name="angle" options={{ title: 'Add angle', presentation: 'modal' }} />
     </Stack>
   );
 }

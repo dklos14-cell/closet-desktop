@@ -92,8 +92,8 @@ export const SHORTCUTS_HELP = (mod: string) =>
     `${mod}Z  Undo     ${mod}= / ${mod}-  Zoom     ${mod}0  Fit`,
     `${mod}[  Back     ${mod},  Settings`,
     '',
-    'Cut-out editor: E erase · R restore · W wand · G gap · hold Space to move · [ ] brush size · F fit · Enter done · Esc cancel',
-    'Outfit board: drag the corner to resize, the ring to turn · arrows move · + − size · [ ] turn · F / B front / back · Delete removes · Esc done',
+    'Cut-out editor: E erase · R restore · W wand · G gap · P pen (Enter closes, ⌫ removes a point) · hold Space to move · [ ] brush size · F fit · Enter done · Esc cancel',
+    'Outfit board: drag the corner to resize, the ring to turn · arrows move · + − size · [ ] turn · V angle · H flip · F / B front / back · Delete removes · Esc done',
     'Outfit picker: Space shuffle all · 1-9 reroll that piece · L keep (lock) it · Enter save',
     'Trackpad: pinch to zoom or resize, two-finger scroll to move around',
   ].join('\n');

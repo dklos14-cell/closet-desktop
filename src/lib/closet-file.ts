@@ -33,6 +33,7 @@ export async function exportCloset(onProgress: (message: string) => void): Promi
   onProgress('Collecting your closet…');
   const pictures = [
     ...db.items.flatMap((i) => (i.thumb_path ? [i.image_path, i.thumb_path] : [i.image_path])),
+    ...db.items.flatMap((i) => (i.angles ?? []).flatMap((a) => [a.image_path, a.thumb_path])),
     ...db.outfits.flatMap((o) => (o.photo_path ? [o.photo_path] : [])),
     ...(db.profile.avatar_path ? [db.profile.avatar_path] : []),
   ];
@@ -162,7 +163,13 @@ export async function importCloset(onProgress: (message: string) => void): Promi
       created_at: it.created_at ?? now(),
       worn_before: it.worn_before ?? 0,
       last_worn_before: it.last_worn_before ?? null,
+      angles: [],
     };
+    for (const a of it.angles ?? []) {
+      const image_path = await keepPhoto(a.image_path);
+      const thumb_path = await keepPhoto(a.thumb_path);
+      if (image_path && thumb_path) row.angles.push({ image_path, thumb_path });
+    }
     const old = db.items.find((i) => i.id === row.id);
     upsert(db.items, row);
     if (old && old.image_path !== row.image_path) await deletePictures([old.image_path, old.thumb_path]);
@@ -213,6 +220,8 @@ export async function importCloset(onProgress: (message: string) => void): Promi
         scale: l.scale ?? 0.4,
         rotation: l.rotation ?? 0,
         z: l.z ?? 0,
+        angle: l.angle ?? 0,
+        flip: l.flip ?? false,
       })),
     ];
     const tagIds = mapTags((data.outfit_tags ?? []).filter((l) => l.outfit_id === o.id).map((l) => l.tag_id));

@@ -13,7 +13,14 @@ export type BoardPiece = {
   image_path: string;
   tagIds: string[];
   layout?: Layout | null;
+  /** The item's photos: main, then extra angles (Layout.angle picks one). */
+  angleUrls?: string[];
 };
+
+/** The picture a piece shows on the board: its chosen angle, else the main photo. */
+export function pictureOf(item: BoardPiece, layout: Layout | undefined): string | null {
+  return item.angleUrls?.[layout?.angle ?? 0] ?? item.imageUrl;
+}
 
 /** Saved positions where they exist; automatic ones for items never placed by hand. */
 export function resolveLayouts(
@@ -51,14 +58,10 @@ export function OutfitBoard({ items, style }: { items: BoardPiece[]; style?: Sty
                   top: l.y * height - size / 2,
                   width: size,
                   height: size,
-                  transform: [{ rotate: `${l.rotation}deg` }],
+                  transform: [{ rotate: `${l.rotation}deg` }, { scaleX: l.flip ? -1 : 1 }],
                 }}>
-                {item.imageUrl ? (
-                  <Image
-                    source={{ uri: item.imageUrl, cacheKey: item.image_path }}
-                    style={styles.image}
-                    contentFit="contain"
-                  />
+                {pictureOf(item, l) ? (
+                  <Image source={{ uri: pictureOf(item, l)! }} style={styles.image} contentFit="contain" />
                 ) : null}
               </View>
             );

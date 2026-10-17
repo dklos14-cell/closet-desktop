@@ -12,6 +12,7 @@ import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { isTyping } from "@/lib/keys";
 import { BOARD_ASPECT, type Layout } from "@/lib/outfit-board";
+import { pictureOf } from "@/components/outfit-board";
 
 import type { OutfitBoardEditorProps } from "./outfit-board-editor";
 
@@ -64,6 +65,12 @@ export function OutfitBoardEditor({
     setLayout(id, {
       z: where === "front" ? Math.max(...zs) + 1 : Math.min(...zs) - 1,
     });
+  };
+
+  /** Shows the item's next photo (main → extra angles → main). */
+  const nextAngle = (id: string) => {
+    const count = items.find((it) => it.id === id)?.angleUrls?.length ?? 1;
+    if (count > 1) setLayout(id, { angle: ((layouts.get(id)!.angle ?? 0) + 1) % count });
   };
 
   function local(e: { clientX: number; clientY: number }): Point {
@@ -204,6 +211,8 @@ export function OutfitBoardEditor({
     const k = e.key;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     else if (k === "f" || k === "F") bringTo(selected, "front");
+    else if (k === "h" || k === "H") setLayout(selected, { flip: !l.flip });
+    else if (k === "v" || k === "V") nextAngle(selected);
     else if (k === "b" || k === "B") bringTo(selected, "back");
     else if (k === "ArrowLeft") setLayout(selected, { x: l.x - step });
     else if (k === "ArrowRight") setLayout(selected, { x: l.x + step });
@@ -271,16 +280,16 @@ export function OutfitBoardEditor({
                   top: `${l.y * 100}%`,
                   width: `${l.scale * 100}%`,
                   aspectRatio: "1",
-                  transform: `translate(-50%, -50%) rotate(${l.rotation}deg)`,
+                  transform: `translate(-50%, -50%) rotate(${l.rotation}deg)${l.flip ? " scaleX(-1)" : ""}`,
                   outline: isSel ? `2px dashed ${theme.tint}` : "none",
                   outlineOffset: 2,
                   borderRadius: 8,
                   cursor: "move",
                 }}
               >
-                {item.imageUrl ? (
+                {pictureOf(item, l) ? (
                   <img
-                    src={item.imageUrl}
+                    src={pictureOf(item, l)!}
                     alt=""
                     draggable={false}
                     style={{
@@ -347,6 +356,18 @@ export function OutfitBoardEditor({
             selected={false}
             onPress={() => setLayout(selected, { rotation: sel.rotation + 15 })}
           />
+          {(items.find((it) => it.id === selected)?.angleUrls?.length ?? 1) > 1 ? (
+            <Chip
+              text={`🔄 Angle ${(sel.angle ?? 0) + 1}/${items.find((it) => it.id === selected)!.angleUrls!.length} (V)`}
+              selected={false}
+              onPress={() => nextAngle(selected)}
+            />
+          ) : null}
+          <Chip
+            text="⇋ Flip (H)"
+            selected={!!sel.flip}
+            onPress={() => setLayout(selected, { flip: !sel.flip })}
+          />
           <Chip
             text="To front"
             selected={false}
@@ -377,7 +398,7 @@ export function OutfitBoardEditor({
         <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
           Drag the corner square to resize, the middle ring to turn (Shift snaps
           to 15°), or pinch to resize · arrows move (Shift: faster) · + − size ·
-          [ ] turn · F / B to front / back · Delete removes · Esc done
+          [ ] turn · V angle · H flip · F / B to front / back · Delete removes · Esc done
         </Text>
       ) : null}
       <View style={styles.row}>

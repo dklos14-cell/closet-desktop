@@ -39,7 +39,10 @@ export type ItemRow = {
   created_at: string;
   worn_before: number;
   last_worn_before: string | null;
+  /** Extra photos from other sides (e.g. a shoe from the front and the side), cut out like the main one. */
+  angles: Angle[];
 };
+export type Angle = { image_path: string; thumb_path: string };
 export type OutfitRow = {
   id: string;
   name: string | null;
@@ -64,6 +67,10 @@ export type OutfitItemRow = {
   scale: number;
   rotation: number;
   z: number;
+  /** Which photo the board shows: 0 = the main one, 1… = the item's extra angles. */
+  angle: number;
+  /** Shown mirrored (e.g. a shoe pointing the other way). */
+  flip: boolean;
 };
 export type EntryRow = {
   id: string;
@@ -76,7 +83,7 @@ export type EntryRow = {
 export type RecurringRow = { id: string; name: string; weekdays: number[]; outfit_id: string | null; created_at: string };
 
 export type Db = {
-  version: 2;
+  version: 3;
   profile: ProfileRow;
   tags: TagRow[];
   items: ItemRow[];
@@ -134,7 +141,7 @@ export const now = () => new Date().toISOString();
 function emptyDb(): Db {
   const created_at = now();
   return {
-    version: 2,
+    version: 3,
     profile: { ...DEFAULT_PROFILE },
     tags: Object.keys(BASE_TAGS).flatMap((kind) => baseTags(kind, created_at)),
     items: [],
@@ -166,7 +173,10 @@ function upgrade(saved: Db): Db {
     if (!db.tags.some((t) => t.kind === 'style')) db.tags.push(...baseTags('style', now()));
   }
   db.outfits = db.outfits.map((o) => ({ ...o, folder_id: o.folder_id ?? null, photo_path: o.photo_path ?? null, show_photo: o.show_photo ?? false }));
-  db.version = 2;
+  // Version 3: extra angles for items; the angle and mirroring of each piece in an outfit.
+  db.items = db.items.map((i) => ({ ...i, angles: i.angles ?? [] }));
+  db.outfit_items = db.outfit_items.map((l) => ({ ...l, angle: l.angle ?? 0, flip: l.flip ?? false }));
+  db.version = 3;
   return db;
 }
 

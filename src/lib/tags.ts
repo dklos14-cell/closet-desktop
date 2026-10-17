@@ -46,6 +46,8 @@ export type Item = {
   rating: number | null;
   created_at: string;
   tagIds: string[];
+  /** Extra photos from other sides. */
+  angles: { image_path: string; thumb_path: string }[];
 };
 
 /** Everything the item form edits. */
