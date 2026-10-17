@@ -45,16 +45,13 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "web": "expo start --web",
     "lint": "expo lint",
     "build:app": "expo export --platform web --clear --output-dir dist",
     "desktop": "npm run build:app && electron electron/main.js",
     "dist:mac": "npm run build:app && electron-builder --mac",
     "dist:win": "npm run build:app && electron-builder --win",
     "dist": "npm run build:app && electron-builder --mac --win",
-    "share": "sh scripts/make-share-zips.sh",
-    "deploy:phone-test": "npm run build:app && npx eas-cli@latest deploy",
-    "deploy:phone": "npm run build:app && npx eas-cli@latest deploy --prod"
+    "share": "sh scripts/make-share-zips.sh"
   },
   "private": true,
   "productName": "Closet",

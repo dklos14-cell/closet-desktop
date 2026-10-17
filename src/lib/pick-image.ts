@@ -18,23 +18,13 @@ export async function pickImage(): Promise<string | null> {
 }
 
 async function viewable(file: File): Promise<Blob> {
-  if (!(await isHeic(file)) || (await canShow(file))) return file;
+  if (!(await isHeic(file))) return file;
   // The converter is large (3 MB), so it's only loaded when a HEIC photo is picked.
   const { heicTo } = await import('heic-to');
   try {
     return await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
   } catch {
     throw new Error('This HEIC photo could not be opened. Try exporting it from Photos as a JPEG.');
-  }
-}
-
-/** iPhone Safari can show HEIC itself; Chrome, Edge and the desktop app can't. */
-async function canShow(file: File): Promise<boolean> {
-  try {
-    (await createImageBitmap(file)).close();
-    return true;
-  } catch {
-    return false;
   }
 }
 

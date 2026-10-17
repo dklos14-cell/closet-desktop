@@ -6,7 +6,7 @@ import { Button } from '@/components/button';
 import { Accents, Spacing, type Accent } from '@/constants/theme';
 import { useResolvedScheme, useTheme } from '@/hooks/use-theme';
 import { exportCloset, importCloset } from '@/lib/closet-file';
-import { desktop, isDesktop } from '@/lib/desktop';
+import { desktop } from '@/lib/desktop';
 import { confirmAction, showMessage } from '@/lib/dialogs';
 import { pickImage } from '@/lib/pick-image';
 import { useProfile, type ProfileFields } from '@/lib/profile-store';
@@ -178,15 +178,8 @@ function ClosetFileCard() {
   const [running, setRunning] = useState(false);
   const [folder, setFolder] = useState<{ path: string; isDefault: boolean; canChange: boolean } | null>(null);
 
-  const [used, setUsed] = useState<string | null>(null);
-
   useEffect(() => {
-    if (isDesktop) desktop().getDataFolder().then(setFolder);
-    else
-      navigator.storage
-        ?.estimate?.()
-        .then(({ usage }) => usage && setUsed(`${Math.max(1, Math.round(usage / 1048576))} MB`))
-        .catch(() => {});
+    desktop().getDataFolder().then(setFolder);
   }, []);
 
   async function changeFolder(useDefault: boolean) {
@@ -228,48 +221,37 @@ function ClosetFileCard() {
     <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
       <Text style={[styles.title, { color: theme.textSecondary }]}>Closet file</Text>
       <Text style={{ color: theme.textSecondary }}>
-        {isDesktop
-          ? 'Your closet is saved on this computer.'
-          : 'Your closet is saved on this phone only (not online). If you delete the app from your home screen or clear Safari\'s website data, it is gone.'}{' '}
-        Export it as one file (items, tags, outfits, calendar and all photos) to keep a copy somewhere
-        safe, email it, or move it to a computer or another phone. Import adds a closet file to this one.
+        Your closet is saved on this computer. Export it as one file (items, tags, outfits, calendar
+        and all photos) to keep a copy somewhere safe, email it, or move it to another computer.
+        Import adds a closet file to this one.
       </Text>
       <Button title="Export closet" variant="secondary" busy={running} onPress={() => run(() => exportCloset(setStatus), 'Export failed')} />
       <Button title="Import a closet" variant="secondary" busy={running} onPress={startImport} />
-      {isDesktop ? (
-        <>
-          <Text style={[styles.title, { color: theme.textSecondary, marginTop: Spacing.two }]}>Saved in</Text>
-          <Text style={{ color: theme.text }} selectable>
-            {folder?.path ?? '…'}
-          </Text>
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <Button title="Show folder" variant="secondary" onPress={() => desktop().openDataFolder()} />
-            </View>
-            {folder?.canChange ? (
-              <View style={styles.flex}>
-                <Button title="Change folder…" variant="secondary" disabled={running} onPress={() => changeFolder(false)} />
-              </View>
-            ) : null}
+      <Text style={[styles.title, { color: theme.textSecondary, marginTop: Spacing.two }]}>Saved in</Text>
+      <Text style={{ color: theme.text }} selectable>
+        {folder?.path ?? '…'}
+      </Text>
+      <View style={styles.row}>
+        <View style={styles.flex}>
+          <Button title="Show folder" variant="secondary" onPress={() => desktop().openDataFolder()} />
+        </View>
+        {folder?.canChange ? (
+          <View style={styles.flex}>
+            <Button title="Change folder…" variant="secondary" disabled={running} onPress={() => changeFolder(false)} />
           </View>
-          {folder?.canChange && !folder.isDefault ? (
-            <Pressable onPress={() => changeFolder(true)} accessibilityRole="button">
-              <Text style={{ color: theme.tint, fontWeight: '600', textAlign: 'center', padding: 4 }}>
-                Move back to the standard folder
-              </Text>
-            </Pressable>
-          ) : null}
-          <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
-            Changing the folder moves your closet and photos there. A cloud folder (iCloud Drive, OneDrive,
-            Dropbox) keeps a copy online, but only open that closet on one computer at a time.
+        ) : null}
+      </View>
+      {folder?.canChange && !folder.isDefault ? (
+        <Pressable onPress={() => changeFolder(true)} accessibilityRole="button">
+          <Text style={{ color: theme.tint, fontWeight: '600', textAlign: 'center', padding: 4 }}>
+            Move back to the standard folder
           </Text>
-        </>
-      ) : (
-        <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
-          {used ? `Using ${used} of this phone's storage. ` : ''}On iPhone, an exported file goes to Files →
-          Downloads; share it from there (Mail, AirDrop, Google Drive).
-        </Text>
-      )}
+        </Pressable>
+      ) : null}
+      <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
+        Changing the folder moves your closet and photos there. A cloud folder (iCloud Drive, OneDrive,
+        Dropbox) keeps a copy online, but only open that closet on one computer at a time.
+      </Text>
       {status ? <Text style={{ color: theme.text }}>{status}</Text> : null}
     </View>
   );

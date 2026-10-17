@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useResolvedScheme, useTheme } from '@/hooks/use-theme';
-import { InstallHint } from '@/components/install-hint';
 import { getDb } from '@/lib/db';
-import { isDesktop } from '@/lib/desktop';
 import { ProfileProvider } from '@/lib/profile-store';
 import { TagProvider } from '@/lib/tag-store';
 
@@ -16,10 +14,6 @@ export default function RootLayout() {
   // The closet is read from this computer before anything is shown.
   const [state, setState] = useState<'loading' | 'ready' | Error>('loading');
   useEffect(() => {
-    // Phone / browser: keep the app's files on the device so it opens without internet.
-    if (Platform.OS === 'web' && !isDesktop && !__DEV__ && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('Offline mode unavailable', e));
-    }
     getDb()
       .then(() => setState('ready'))
       .catch((e: Error) => setState(e))
@@ -38,10 +32,7 @@ export default function RootLayout() {
   return (
     <ProfileProvider>
       <TagProvider>
-        <View style={{ flex: 1 }}>
-          <InstallHint />
-          <ThemedApp />
-        </View>
+        <ThemedApp />
       </TagProvider>
     </ProfileProvider>
   );

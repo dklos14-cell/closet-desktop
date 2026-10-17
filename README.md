@@ -1,11 +1,10 @@
 # Closet
 
-Your clothes, outfits and a calendar of what you wore, kept **on your own device**. No account,
-no login, nothing stored online, nothing to pay for.
+Your clothes, outfits and a calendar of what you wore, as a program for **Mac and Windows**.
+Everything is kept on your computer: no account, no login, nothing stored online, nothing to
+pay for.
 
-- **Mac and Windows**: a normal program you install.
-- **iPhone and Android**: open the Closet link and add it to your home screen. It works offline.
-- Move a closet between devices with one **closet file** (Profile → Closet file → Export / Import).
+Move a closet between computers with one **closet file** (Profile → Closet file → Export / Import).
 
 ---
 
@@ -31,33 +30,16 @@ sold through Apple or Microsoft. To open it anyway:
   `xattr -dr com.apple.quarantine /Applications/Closet.app`, then open it again.
 - **Windows:** **More info** → **Run anyway**.
 
-### On an iPhone
-
-1. Open the Closet link (ask the person who shared this page) in **Safari**.
-2. Tap **Share** (the square with the arrow) → **Add to Home Screen** → **Add**.
-3. Open Closet **from the new icon** and use it from there. A closet started in a Safari tab stays
-   in Safari, separate from the icon's.
-
-### On an Android phone
-
-1. Open the Closet link in **Chrome**.
-2. Tap **⋮** → **Add to Home screen** (or **Install app**).
-3. Open Closet from the new icon.
-
 ### Where your closet is saved
 
-| Device | Where |
+| Computer | Where |
 |---|---|
 | Mac | `~/Library/Application Support/Closet/closet/`, or a folder you choose |
 | Windows | `%APPDATA%\Closet\closet\`, or a folder you choose |
-| iPhone / Android | Inside the Closet app's own storage on the phone |
 
-Your closet is **only on that device**. Export a copy now and then (Profile → Closet file →
+Your closet is **only on that computer**. Export a copy now and then (Profile → Closet file →
 **Export closet**) and keep the file in iCloud Drive, Google Drive or an email to yourself.
-That file is also how you move your closet to a new phone or computer (**Import a closet**).
-
-On a phone, deleting the Closet icon or clearing Safari / Chrome website data deletes the closet,
-so export first.
+That file is also how you move your closet to a new computer (**Import a closet**).
 
 ---
 
@@ -65,9 +47,8 @@ so export first.
 
 Everything below is about building and changing the app.
 
-This folder started as a copy of `../closet-app` (the old Supabase website). The same code now
-builds both the desktop app (Electron, closet saved in a folder) and the phone version (a website
-you install to the home screen, closet saved in the browser's IndexedDB on the phone).
+This folder started as a copy of `../closet-app` (the old Supabase website). It's now a desktop
+app only: Electron shows the app, and the closet is saved in a folder on the computer.
 
 ## Where the closet is kept
 
@@ -103,9 +84,8 @@ the file somewhere safe (iCloud Drive, Google Drive, a USB stick, an email to yo
 (same item or outfit) is updated to the file's version. Tags with the same name are merged. If
 the closet has no name yet (a fresh install), it also takes the file's name, picture and settings.
 
-The website's **Download my closet** makes the same kind of file, and the website has
-**Import a closet** too. So you can go phone (website) → computer, computer → computer, or
-computer → phone.
+A backup from the old Closet website (**Download my closet**) is the same kind of file, so a
+closet from the website can be imported here.
 
 ---
 
@@ -182,46 +162,15 @@ rows by id.
 
 ---
 
-## The phone version
-
-The same app, built as a website (`npm run build:app` → `dist/`) and hosted for free on EAS
-Hosting. There's no server or database behind it; the hosting only hands out the app's files.
-
-- **Closet storage:** `src/lib/browser-store.ts` keeps `closet.json` and the photos in the phone's
-  IndexedDB and asks the browser to keep it (`navigator.storage.persist()`).
-- **Offline:** `public/sw.js` (a service worker) saves the app's files on the phone. Pages come
-  from the internet when online, so a new version arrives on the next open with signal.
-- **Install:** `public/index.html` (page template), `public/manifest.webmanifest` and the icons in
-  `public/` make Add to Home Screen work. `src/components/install-hint.tsx` tells iPhone users
-  in Safari to install first.
-- **Photos:** iPhone Safari opens HEIC itself; Chrome/Android get them converted to JPEG.
-- **Export** downloads the closet .zip (iPhone: Files → Downloads); **Import** picks one.
-
-Publish it:
-
-```bash
-npm run deploy:phone-test   # a test link (closet-app--xxxx.expo.app), the live site is untouched
-npm run deploy:phone        # the real link, https://closet-app.expo.app (replaces the old website!)
-```
-
-`app.json` still points at the old website's EAS project, so `deploy:phone` replaces the Supabase
-website at closet-app.expo.app. Anyone using that website should **Download my closet** there
-first, then **Import a closet** in the new version.
-
-Offline mode only starts on the published (https) site, not with `npm run web`.
-
 ## Project layout
 
 ```
 electron/
   main.js          the window, the closet folder, Export/Import dialogs, app:// and photo:// links
   preload.js       the only computer functions the app page may use
-public/            phone install + offline files (index.html template, manifest, sw.js, icons)
 src/
-  lib/browser-store.ts  phone version: closet in IndexedDB, Export = download, Import = file picker
-  components/install-hint.tsx  "Install Closet first" banner for iPhone Safari
   lib/db.ts        the closet in memory + saving closet.json; deleting, wear counts, monthly clean-up
-  lib/desktop.ts   desktop() = the Electron functions, or browser-store on a phone; photoUrl()
+  lib/desktop.ts   types for the preload functions; photoUrl()
   lib/closet-file.ts  Export / Import of the closet .zip
   lib/pick-image.ts   choosing a photo; HEIC → JPEG (the converter loads only when needed)
   lib/items.ts, outfits.ts, calendar.ts, recurring.ts, tag-store.tsx, profile-store.tsx
