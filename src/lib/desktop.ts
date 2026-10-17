@@ -1,3 +1,9 @@
+/** One line of a right-click menu. */
+export type MenuEntry =
+  | { id: string; label: string; enabled?: boolean; checked?: boolean }
+  | { label: string; submenu: MenuEntry[] }
+  | { separator: true };
+
 /** What the desktop shell (electron/preload.js) lets the app do on this computer. */
 export type DesktopBridge = {
   loadDb(): Promise<string | null>;
@@ -14,6 +20,13 @@ export type DesktopBridge = {
   getDataFolder(): Promise<{ path: string; isDefault: boolean; canChange: boolean }>;
   /** Moves the closet to a folder the user picks (or back to the default) and restarts the app. */
   changeDataFolder(useDefault: boolean): Promise<boolean>;
+  /** Shows a right-click menu; resolves with the chosen entry's id (null if closed). */
+  popupMenu(entries: MenuEntry[]): Promise<string | null>;
+  /** This version, and whether it looks for updates by itself when opened. */
+  appInfo(): Promise<{ version: string; autoUpdate: boolean }>;
+  /** Looks for a new version; the desktop shell shows the result and installs it if asked. */
+  checkForUpdates(): Promise<void>;
+  setAutoUpdate(on: boolean): Promise<void>;
   /** Menu commands; returns a function that stops listening. */
   onCommand(callback: (command: string) => void): () => void;
 };

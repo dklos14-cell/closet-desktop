@@ -14,7 +14,7 @@ import {
 
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chips';
-import { OutfitBoard } from '@/components/outfit-board';
+import { OutfitPicture } from '@/components/outfit-picture';
 import { StarRating } from '@/components/star-rating';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -311,7 +311,7 @@ export default function TodayScreen() {
                       onPress={() => router.push({ pathname: '/outfits/edit', params: { id: shown.outfit!.id } }, { withAnchor: true })}
                       style={styles.boardWrap}
                       accessibilityLabel="Open outfit">
-                      <OutfitBoard items={shown.outfit.items} />
+                      <OutfitPicture outfit={shown.outfit} />
                     </Pressable>
                   ) : shown ? (
                     <View style={[styles.emptyCard, { backgroundColor: theme.backgroundElement }]}>
@@ -322,7 +322,7 @@ export default function TodayScreen() {
                       onPress={() => router.push({ pathname: '/outfits/edit', params: { id: repeatOn(d)!.outfit!.id } }, { withAnchor: true })}
                       style={styles.boardWrap}
                       accessibilityLabel="Open outfit">
-                      <OutfitBoard items={repeatOn(d)!.outfit!.items} />
+                      <OutfitPicture outfit={repeatOn(d)!.outfit!} />
                       <View style={[styles.repeatBadge, { backgroundColor: theme.tint }]}>
                         <Text style={styles.repeatBadgeText}>🔁 {repeatOn(d)!.event.name}</Text>
                       </View>
@@ -334,7 +334,15 @@ export default function TodayScreen() {
                         {d === today ? 'No outfit picked for today' : 'Nothing planned for this day'}
                       </Text>
                       <View style={styles.emptyButtons}>
-                        <Button title="Pick an outfit" onPress={() => router.push({ pathname: '/calendar/log', params: { date: d } }, { withAnchor: true })} />
+                        <Button
+                          title="✨ Pick one for me"
+                          onPress={() => router.push({ pathname: '/outfits/pick', params: { date: d } }, { withAnchor: true })}
+                        />
+                        <Button
+                          title="Choose a saved outfit"
+                          variant="secondary"
+                          onPress={() => router.push({ pathname: '/calendar/log', params: { date: d } }, { withAnchor: true })}
+                        />
                         <Button
                           title="Create a new outfit"
                           variant="secondary"

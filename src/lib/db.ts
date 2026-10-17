@@ -48,7 +48,14 @@ export type OutfitRow = {
   created_at: string;
   worn_before: number;
   last_worn_before: string | null;
+  /** The folder it's filed in (Outfits screen), if any. */
+  folder_id: string | null;
+  /** A photo of you wearing it, if you added one. */
+  photo_path: string | null;
+  /** Show that photo on the outfit's card instead of the board. */
+  show_photo: boolean;
 };
+export type FolderRow = { id: string; name: string; position: number; created_at: string };
 export type OutfitItemRow = {
   outfit_id: string;
   item_id: string;
@@ -69,12 +76,13 @@ export type EntryRow = {
 export type RecurringRow = { id: string; name: string; weekdays: number[]; outfit_id: string | null; created_at: string };
 
 export type Db = {
-  version: 1;
+  version: 2;
   profile: ProfileRow;
   tags: TagRow[];
   items: ItemRow[];
   item_tags: { item_id: string; tag_id: string }[];
   outfits: OutfitRow[];
+  folders: FolderRow[];
   outfit_items: OutfitItemRow[];
   outfit_tags: { outfit_id: string; tag_id: string }[];
   calendar_entries: EntryRow[];
@@ -114,7 +122,11 @@ const BASE_TAGS: Record<string, string[]> = {
     'Solid', 'Striped', 'Plaid', 'Checkered', 'Polka dot', 'Floral', 'Graphic', 'Logo', 'Animal print', 'Camo',
     'Tie-dye', 'Paisley', 'Textured',
   ],
+  style: ['Classic', 'Casual', 'Sporty', 'Streetwear', 'Minimal', 'Preppy', 'Boho', 'Edgy', 'Cozy', 'Dressy'],
 };
+
+const baseTags = (kind: string, created_at: string) =>
+  BASE_TAGS[kind].map((name, i) => ({ id: newId(), kind, name, position: i + 1, created_at }));
 
 export const newId = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
@@ -122,14 +134,13 @@ export const now = () => new Date().toISOString();
 function emptyDb(): Db {
   const created_at = now();
   return {
-    version: 1,
+    version: 2,
     profile: { ...DEFAULT_PROFILE },
-    tags: Object.entries(BASE_TAGS).flatMap(([kind, names]) =>
-      names.map((name, i) => ({ id: newId(), kind, name, position: i + 1, created_at })),
-    ),
+    tags: Object.keys(BASE_TAGS).flatMap((kind) => baseTags(kind, created_at)),
     items: [],
     item_tags: [],
     outfits: [],
+    folders: [],
     outfit_items: [],
     outfit_tags: [],
     calendar_entries: [],
@@ -143,8 +154,20 @@ let loading: Promise<Db> | null = null;
 export function getDb(): Promise<Db> {
   loading ??= desktop()
     .loadDb()
-    .then((json) => (json ? { ...emptyDb(), ...(JSON.parse(json) as Db) } : emptyDb()));
+    .then((json) => (json ? upgrade(JSON.parse(json) as Db) : emptyDb()));
   return loading;
+}
+
+/** Brings a closet saved by an older version up to date (saved again on the next change). */
+function upgrade(saved: Db): Db {
+  const db: Db = { ...emptyDb(), ...saved, folders: saved.folders ?? [] };
+  if ((saved.version ?? 1) < 2) {
+    // Version 2: a Style tag group, and outfit folders and photos.
+    if (!db.tags.some((t) => t.kind === 'style')) db.tags.push(...baseTags('style', now()));
+  }
+  db.outfits = db.outfits.map((o) => ({ ...o, folder_id: o.folder_id ?? null, photo_path: o.photo_path ?? null, show_photo: o.show_photo ?? false }));
+  db.version = 2;
+  return db;
 }
 
 /** Writes the closet back to disk. Call after every change. */
@@ -168,6 +191,12 @@ export function removeOutfit(db: Db, id: string) {
   db.outfit_tags = db.outfit_tags.filter((l) => l.outfit_id !== id);
   for (const e of db.calendar_entries) if (e.outfit_id === id) e.outfit_id = null;
   for (const r of db.recurring_events) if (r.outfit_id === id) r.outfit_id = null;
+}
+
+/** Outfits in the folder stay; they're just no longer in a folder. */
+export function removeFolder(db: Db, id: string) {
+  db.folders = db.folders.filter((f) => f.id !== id);
+  for (const o of db.outfits) if (o.folder_id === id) o.folder_id = null;
 }
 
 export function removeTag(db: Db, id: string) {
@@ -239,8 +268,9 @@ export function outfitWear(db: Db): Map<string, Wear> {
 
 /**
  * When a new month starts: last month's one-off calendar days and outfits made in past months
- * are cleared. Items are never removed, and neither are favorite outfits, outfits used by a
- * repeating event, or outfits planned for a coming day. Wear counts are kept.
+ * are cleared. Items are never removed, and neither are favorite outfits, outfits in a folder or
+ * with your photo, outfits used by a repeating event, or outfits planned for a coming day.
+ * Wear counts are kept.
  * Returns true if anything ran.
  */
 export async function monthlyCleanup(): Promise<boolean> {
@@ -274,7 +304,9 @@ export async function monthlyCleanup(): Promise<boolean> {
     ...db.calendar_entries.flatMap((e) => (e.outfit_id ? [e.outfit_id] : [])),
   ]);
   for (const o of [...db.outfits]) {
-    if (o.created_at.slice(0, 10) < monthStart && !o.is_favorite && !kept.has(o.id)) removeOutfit(db, o.id);
+    // Outfits you organized (favorite, in a folder, or with your photo) are kept too.
+    const organized = o.is_favorite || !!o.folder_id || !!o.photo_path;
+    if (o.created_at.slice(0, 10) < monthStart && !organized && !kept.has(o.id)) removeOutfit(db, o.id);
   }
   db.profile.last_cleanup = monthStart;
   await saveDb();

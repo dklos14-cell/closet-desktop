@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { OutfitBoard } from '@/components/outfit-board';
+import { OutfitPicture } from '@/components/outfit-picture';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { contextMenu } from '@/lib/keys';
 import type { OutfitWithItems } from '@/lib/outfits';
 
 /**
@@ -15,11 +16,14 @@ export function OutfitCard({
   timesWorn,
   width,
   onToggleFavorite,
+  onMenu,
 }: {
   outfit: OutfitWithItems;
   timesWorn: number;
   width: number;
   onToggleFavorite: (outfit: OutfitWithItems) => void;
+  /** Right-click: show the card's menu. */
+  onMenu?: (outfit: OutfitWithItems) => void;
 }) {
   const theme = useTheme();
   const rating =
@@ -32,8 +36,12 @@ export function OutfitCard({
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/outfits/edit', params: { id: outfit.id } }, { withAnchor: true })}
-      style={[styles.card, { width, backgroundColor: theme.backgroundElement }]}>
-      <OutfitBoard items={outfit.items} style={{ backgroundColor: theme.background }} />
+      {...contextMenu(onMenu && (() => onMenu(outfit)))}
+      style={({ hovered }: { hovered?: boolean }) => [
+        styles.card,
+        { width, backgroundColor: hovered ? theme.backgroundSelected : theme.backgroundElement },
+      ]}>
+      <OutfitPicture outfit={outfit} style={{ backgroundColor: theme.background }} />
       <View style={styles.footer}>
         <View style={styles.flex}>
           <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>

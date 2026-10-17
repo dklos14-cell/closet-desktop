@@ -64,6 +64,7 @@ Import a closet with that .zip file.
 
 UPDATING OR REMOVING
 --------------------
-Update: install the new version the same way. Your closet is kept.
+Updates: Closet tells you when there's a new version (or use Check for Updates in the menu)
+and installs it with one click. Your closet is kept.
 Remove: drag Closet from Applications to the Trash. Your closet folder is NOT deleted
 (delete the folder above too if you want it gone).

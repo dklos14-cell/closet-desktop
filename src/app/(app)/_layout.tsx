@@ -27,12 +27,17 @@ const MENU: {
   { label: 'Closet', route: 'closet', icon: { ios: 'hanger', android: 'checkroom', web: 'checkroom' } },
   { label: 'Add clothes', action: startAddItem, icon: { ios: 'camera', android: 'add_a_photo', web: 'add_a_photo' } },
   { label: 'Outfits', route: 'outfits', icon: { ios: 'tshirt', android: 'apparel', web: 'apparel' } },
+  { label: 'Pick an outfit', action: pickOutfit, icon: { ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' } },
   { label: 'Favorites', route: 'favorites', icon: { ios: 'heart', android: 'favorite', web: 'favorite' } },
   { label: 'Calendar', route: 'calendar', icon: { ios: 'calendar', android: 'calendar_month', web: 'calendar_month' } },
   { label: 'Stats', route: 'stats', icon: { ios: 'chart.bar', android: 'bar_chart', web: 'bar_chart' } },
   { label: 'Tags', route: 'tags', icon: { ios: 'tag', android: 'sell', web: 'sell' } },
   { label: 'Profile', route: 'profile', icon: { ios: 'person.crop.circle', android: 'account_circle', web: 'account_circle' } },
 ];
+
+function pickOutfit() {
+  router.push('/outfits/pick', { withAnchor: true });
+}
 
 /** Sections that are stacks of screens (list → detail / editor). */
 const STACKS = new Set(['closet', 'outfits', 'calendar', 'tags']);
@@ -44,9 +49,15 @@ function runCommand(command: string) {
     router.navigate(route === 'index' ? '/' : (`/${route}` as '/'));
   } else if (command === 'new-item') startAddItem();
   else if (command === 'new-outfit') router.push('/outfits/edit', { withAnchor: true });
+  else if (command === 'pick-outfit') pickOutfit();
   else if (command === 'find') {
+    // The search box on screen (Closet, Outfits, Add from closet); otherwise the Closet's.
+    const shown = () =>
+      [...document.querySelectorAll<HTMLInputElement>('input[placeholder^="🔍"]')].find((el) => el.offsetParent !== null);
+    const box = shown();
+    if (box) return box.focus();
     router.navigate('/closet');
-    setTimeout(() => document.querySelector<HTMLInputElement>('input[placeholder^="🔍"]')?.focus(), 400);
+    setTimeout(() => shown()?.focus(), 400);
   } else if (command === 'export') {
     exportCloset(() => {})
       .then((path) => path && showMessage('Closet exported', `Saved to ${path}`))

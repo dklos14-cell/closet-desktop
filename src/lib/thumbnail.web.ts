@@ -2,12 +2,12 @@ import { toImageBlob } from '@/lib/web-image';
 
 export const THUMB_MAX = 480;
 
-/** A small copy of a cut-out for grids and boards: WebP where the browser can, PNG otherwise. */
-export async function makeThumbnail(uri: string): Promise<string> {
+/** A small copy of a cut-out for grids and boards (or of any photo, at most `max` px): WebP. */
+export async function makeThumbnail(uri: string, max = THUMB_MAX): Promise<string> {
   const img = new Image();
   img.src = uri;
   await img.decode();
-  const scale = Math.min(1, THUMB_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
   canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));

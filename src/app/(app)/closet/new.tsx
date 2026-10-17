@@ -13,6 +13,7 @@ import { showMessage } from '@/lib/dialogs';
 import { saveItem } from '@/lib/items';
 import type { ItemFields } from '@/lib/tags';
 import { cancelEditing, goBack } from '@/lib/navigation';
+import { useEditorShortcuts } from '@/lib/commands';
 
 const EMPTY_FIELDS: ItemFields = {
   name: '',
@@ -57,6 +58,9 @@ export default function NewItemScreen() {
       setStep('editing');
     }
   }
+
+  // The form's keys; while cutting out, the cut-out editor has its own.
+  useEditorShortcuts({ save, cancel: discard, enabled: step === 'editing' });
 
   if (!photoUri) {
     // e.g. the page was reloaded in a browser, which forgets the picked photo.

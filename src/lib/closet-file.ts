@@ -8,6 +8,7 @@ import {
   now,
   saveDb,
   type EntryRow,
+  type FolderRow,
   type ItemRow,
   type OutfitItemRow,
   type OutfitRow,
@@ -32,6 +33,7 @@ export async function exportCloset(onProgress: (message: string) => void): Promi
   onProgress('Collecting your closet…');
   const pictures = [
     ...db.items.flatMap((i) => (i.thumb_path ? [i.image_path, i.thumb_path] : [i.image_path])),
+    ...db.outfits.flatMap((o) => (o.photo_path ? [o.photo_path] : [])),
     ...(db.profile.avatar_path ? [db.profile.avatar_path] : []),
   ];
   const photos: Zippable = {};
@@ -55,6 +57,7 @@ export async function exportCloset(onProgress: (message: string) => void): Promi
     items: db.items,
     item_tags: db.item_tags,
     outfits: db.outfits,
+    folders: db.folders,
     outfit_items: db.outfit_items,
     outfit_tags: db.outfit_tags,
     calendar_entries: db.calendar_entries,
@@ -86,6 +89,7 @@ type ClosetFile = {
   outfit_tags?: { outfit_id: string; tag_id: string }[];
   calendar_entries?: Partial<EntryRow>[];
   recurring_events?: Partial<RecurringRow>[];
+  folders?: Partial<FolderRow>[];
 };
 
 export type ImportSummary = { items: number; outfits: number; days: number; tags: number };
@@ -168,9 +172,24 @@ export async function importCloset(onProgress: (message: string) => void): Promi
   }
   const itemIds = new Set(db.items.map((i) => i.id));
 
+  // Folders: one with the same name as yours is merged into yours.
+  const folderMap = new Map<string, string>();
+  for (const f of data.folders ?? []) {
+    if (!f.id || !f.name) continue;
+    const same =
+      db.folders.find((x) => x.id === f.id) ?? db.folders.find((x) => x.name.toLowerCase() === f.name!.toLowerCase());
+    if (same) folderMap.set(f.id, same.id);
+    else {
+      const position = Math.max(0, ...db.folders.map((x) => x.position)) + 1;
+      db.folders.push({ id: f.id, name: f.name, position, created_at: f.created_at ?? now() });
+      folderMap.set(f.id, f.id);
+    }
+  }
+
   onProgress('Adding outfits…');
   for (const o of data.outfits ?? []) {
     if (!o.id) continue;
+    const photo_path = await keepPhoto(o.photo_path);
     upsert(db.outfits, {
       id: o.id,
       name: o.name ?? null,
@@ -179,6 +198,9 @@ export async function importCloset(onProgress: (message: string) => void): Promi
       created_at: o.created_at ?? now(),
       worn_before: o.worn_before ?? 0,
       last_worn_before: o.last_worn_before ?? null,
+      folder_id: (o.folder_id && folderMap.get(o.folder_id)) || null,
+      photo_path,
+      show_photo: !!photo_path && (o.show_photo ?? false),
     });
     const links = (data.outfit_items ?? []).filter((l) => l.outfit_id === o.id && l.item_id && itemIds.has(l.item_id));
     db.outfit_items = [

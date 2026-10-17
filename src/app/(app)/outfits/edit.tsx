@@ -13,6 +13,7 @@ import { Button } from '@/components/button';
 import { Chip } from '@/components/chips';
 import { HeaderCancel } from '@/components/header-cancel';
 import { ClosetPicker } from '@/components/closet-picker';
+import { FolderChooser } from '@/components/folder-chooser';
 import { resolveLayouts } from '@/components/outfit-board';
 import { OutfitBoardEditor } from '@/components/outfit-board-editor';
 import { StarRating } from '@/components/star-rating';
@@ -22,17 +23,30 @@ import { useTheme } from '@/hooks/use-theme';
 import { fetchItems, type ItemWithUrl } from '@/lib/items';
 import { addEntry } from '@/lib/calendar';
 import type { Layout } from '@/lib/outfit-board';
-import { deleteOutfit, fetchOutfit, fetchOutfitWearStats, saveOutfit, type OutfitFields } from '@/lib/outfits';
+import {
+  deleteOutfit,
+  fetchFolders,
+  fetchOutfit,
+  fetchOutfitWearStats,
+  saveOutfit,
+  type Folder,
+  type OutfitFields,
+  type PhotoChange,
+} from '@/lib/outfits';
+import { pickImage } from '@/lib/pick-image';
+import { makeThumbnail } from '@/lib/thumbnail';
 import { OUTFIT_TAG_KINDS } from '@/lib/tags';
 import { useTags } from '@/lib/tag-store';
 import { showMessage, confirmAction } from '@/lib/dialogs';
 import { cancelEditing, goBack } from '@/lib/navigation';
+import { useEditorShortcuts } from '@/lib/commands';
 
-const EMPTY_OUTFIT: OutfitFields = { name: '', rating: null, is_favorite: false, tagIds: [] };
+const EMPTY_OUTFIT: OutfitFields = { name: '', rating: null, is_favorite: false, tagIds: [], folder_id: null, show_photo: false };
+const KEEP: PhotoChange = { kind: 'keep' };
 
 /** A comparable text version of everything the editor can change. */
-function snapshot(fields: OutfitFields, itemIds: string[], placed: Map<string, Layout>) {
-  return JSON.stringify([fields, [...itemIds].sort(), [...placed.entries()].sort()]);
+function snapshot(fields: OutfitFields, itemIds: string[], placed: Map<string, Layout>, photo: PhotoChange = KEEP) {
+  return JSON.stringify([fields, [...itemIds].sort(), [...placed.entries()].sort(), photo]);
 }
 
 /** Create a new outfit (no id) or edit an existing one (id param). */
@@ -53,18 +67,26 @@ export default function OutfitEditScreen() {
   const [original, setOriginal] = useState<string>(() => snapshot(EMPTY_OUTFIT, [], new Map()));
   // The pieces chosen before opening "Add from closet", so its Cancel can put them back.
   const [beforePicking, setBeforePicking] = useState<string[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  // The "me in this outfit" photo: what's saved now, and what Save will do with it.
+  const [savedPhoto, setSavedPhoto] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<PhotoChange>(KEEP);
+  const photoShown = photo.kind === 'new' ? photo.uri : photo.kind === 'remove' ? null : savedPhoto;
 
   useEffect(() => {
-    Promise.all([fetchItems(), id ? fetchOutfit(id) : null, id ? fetchOutfitWearStats() : null])
-      .then(([allItems, outfit, wear]) => {
+    Promise.all([fetchItems(), id ? fetchOutfit(id) : null, id ? fetchOutfitWearStats() : null, fetchFolders()])
+      .then(([allItems, outfit, wear, allFolders]) => {
         setItems(allItems);
+        setFolders(allFolders);
         if (outfit) {
-          const { name, rating, is_favorite, tagIds } = outfit;
-          setFields({ name, rating, is_favorite, tagIds });
+          const { name, rating, is_favorite, tagIds, folder_id, show_photo } = outfit;
+          const loaded = { name, rating, is_favorite, tagIds, folder_id, show_photo };
+          setFields(loaded);
           setSelected(outfit.itemIds);
           setPlaced(outfit.layouts);
+          setSavedPhoto(outfit.photoUrl);
           setTimesWorn(wear?.get(outfit.id)?.wear_count ?? 0);
-          setOriginal(snapshot({ name, rating, is_favorite, tagIds }, outfit.itemIds, outfit.layouts));
+          setOriginal(snapshot(loaded, outfit.itemIds, outfit.layouts));
         }
       })
       .catch((e) => {
@@ -96,7 +118,19 @@ export default function OutfitEditScreen() {
   const toggle = (itemId: string) =>
     setSelected((s) => (s.includes(itemId) ? s.filter((x) => x !== itemId) : [...s, itemId]));
 
-  const changed = snapshot(fields, selected, placed) !== original;
+  const changed = snapshot(fields, selected, placed, photo) !== original;
+
+  async function choosePhoto() {
+    try {
+      const uri = await pickImage();
+      if (!uri) return;
+      // Kept at most 1600 px: plenty for the screen, small on disk.
+      setPhoto({ kind: 'new', uri: await makeThumbnail(uri, 1600) });
+      setFields((f) => ({ ...f, show_photo: true }));
+    } catch (e) {
+      showMessage('Could not open photo', (e as Error).message);
+    }
+  }
   function cancel() {
     cancelEditing(changed, '/outfits');
   }
@@ -113,6 +147,7 @@ export default function OutfitEditScreen() {
         { ...fields, name: fields.name?.trim() || null },
         selected,
         layouts,
+        photo,
       );
       if (logDate) await addEntry(logDate, savedId, null);
       goBack('/outfits');
@@ -121,6 +156,9 @@ export default function OutfitEditScreen() {
       setBusy(null);
     }
   }
+
+  // While "Add from closet" is open, Esc closes that instead.
+  useEditorShortcuts({ save, cancel, enabled: !picking && busy === null });
 
   async function confirmDelete() {
     if (!id) return;
@@ -181,6 +219,47 @@ export default function OutfitEditScreen() {
           setPicking(false);
         }}
       />
+
+      <View style={styles.section}>
+        <Text style={[styles.title, { color: theme.textSecondary }]}>Folder</Text>
+        <FolderChooser
+          folders={folders}
+          value={fields.folder_id}
+          onChange={(folder_id) => setFields((f) => ({ ...f, folder_id }))}
+          onCreated={(folder) => setFolders((all) => [...all, folder])}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.title, { color: theme.textSecondary }]}>Me in this outfit</Text>
+        {photoShown ? (
+          <>
+            <img
+              src={photoShown}
+              alt="You wearing this outfit"
+              style={{ width: '100%', maxHeight: 420, objectFit: 'contain', borderRadius: 12, background: theme.backgroundElement }}
+            />
+            <View style={styles.row}>
+              <Chip
+                text={fields.show_photo ? '✓ Shown on the outfit card' : 'Show on the outfit card'}
+                selected={fields.show_photo}
+                onPress={() => setFields((f) => ({ ...f, show_photo: !f.show_photo }))}
+              />
+              <Chip text="Change photo" selected={false} onPress={choosePhoto} />
+              <Chip
+                text="Remove photo"
+                selected={false}
+                onPress={() => {
+                  setPhoto(savedPhoto ? { kind: 'remove' } : KEEP);
+                  setFields((f) => ({ ...f, show_photo: false }));
+                }}
+              />
+            </View>
+          </>
+        ) : (
+          <Button title="📷 Add a photo of me wearing it" variant="secondary" onPress={choosePhoto} />
+        )}
+      </View>
 
       <TagPicker
         kinds={OUTFIT_TAG_KINDS}

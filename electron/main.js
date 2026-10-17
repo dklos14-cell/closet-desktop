@@ -7,9 +7,15 @@
 // file → Change folder), which is remembered in <user data>/settings.json.
 // <user data> is ~/Library/Application Support/Closet on a Mac, %APPDATA%\Closet on Windows.
 const { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } = require('electron');
+const { execFile, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { promisify } = require('node:util');
+
+const VERSION = require('../package.json').version;
+// New versions are published as GitHub releases here (see README → Publishing an update).
+const UPDATE_REPO = 'dklos14-cell/closet-desktop';
 
 app.setName('Closet'); // same data folder whether run from source or installed
 
@@ -133,6 +139,38 @@ function registerIpc() {
 
   ipcMain.handle('folder:open', () => shell.openPath(DATA_DIR));
 
+  // A right-click menu. Resolves with the chosen entry's id, or null if it was closed.
+  ipcMain.handle('menu:popup', (event, entries) => {
+    return new Promise((resolve) => {
+      const build = (list) =>
+        list.map((e) =>
+          e.separator
+            ? { type: 'separator' }
+            : e.submenu
+              ? { label: e.label, submenu: build(e.submenu) }
+              : {
+                  label: e.label,
+                  enabled: e.enabled !== false,
+                  ...(e.checked === undefined ? {} : { type: 'checkbox', checked: e.checked }),
+                  click: () => resolve(e.id),
+                },
+        );
+      Menu.buildFromTemplate(build(entries)).popup({
+        window: BrowserWindow.fromWebContents(event.sender),
+        // Closing also fires when an entry was clicked; that click has already answered by then.
+        callback: () => setTimeout(() => resolve(null), 100),
+      });
+    });
+  });
+
+  ipcMain.handle('app:info', () => ({ version: VERSION, autoUpdate: readSettings().autoUpdate !== false }));
+  ipcMain.handle('update:check', (event) => checkForUpdates(BrowserWindow.fromWebContents(event.sender), false));
+  ipcMain.handle('update:auto', async (_event, on) => {
+    const settings = readSettings();
+    settings.autoUpdate = !!on;
+    await writeSafely(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  });
+
   ipcMain.handle('folder:get', () => ({
     path: DATA_DIR,
     isDefault: DATA_DIR === DEFAULT_DATA_DIR,
@@ -199,6 +237,177 @@ function registerIpc() {
   });
 }
 
+// --- Updates ----------------------------------------------------------------------------------
+// Check: ask GitHub for the newest release and compare its version with this one.
+// Install: download that release's installer, then
+//   Mac      copy the new Closet.app over this one and restart (if that fails: open the .dmg),
+//   Windows  run the installer silently; it closes Closet, installs, and opens it again.
+// The closet itself is in the data folder, so updating never touches it.
+
+/** "v1.2.0" → [1, 2, 0] */
+const versionParts = (v) => String(v).replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+function isNewer(latest, current) {
+  const a = versionParts(latest);
+  const b = versionParts(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+}
+
+/** The release file for this computer: the .dmg (Mac) or Setup .exe (Windows), else the zip. */
+function pickAsset(assets) {
+  const mac = process.platform === 'darwin';
+  const ends = (ext) => assets.find((a) => a.name.toLowerCase().endsWith(ext));
+  const zip = assets.find((a) => a.name.toLowerCase().endsWith('.zip') && a.name.toLowerCase().includes(mac ? 'mac' : 'windows'));
+  return (mac ? ends('.dmg') : ends('.exe')) ?? zip ?? null;
+}
+
+let updating = false;
+
+/** quiet: the automatic check when Closet opens; only speaks up if there is a new version. */
+async function checkForUpdates(win, quiet) {
+  if (updating) return;
+  let release;
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Closet-app' },
+    });
+    if (res.status === 404) throw new Error('No new versions have been published yet.');
+    if (!res.ok) throw new Error(`GitHub answered ${res.status}. Try again later.`);
+    release = await res.json();
+  } catch (e) {
+    if (!quiet) {
+      const offline = !(e instanceof Error) || !/published|GitHub/.test(e.message);
+      await dialog.showMessageBox(win, {
+        type: 'info',
+        message: "Couldn't check for updates",
+        detail: offline ? `${e.message}\n\nCheck your internet connection and try again.` : e.message,
+      });
+    }
+    return;
+  }
+  const latest = String(release.tag_name ?? release.name ?? '').replace(/^v/i, '');
+  if (!isNewer(latest, VERSION)) {
+    if (!quiet) await dialog.showMessageBox(win, { type: 'info', message: "You're up to date", detail: `Closet ${VERSION} is the newest version.` });
+    return;
+  }
+  const asset = pickAsset(release.assets ?? []);
+  const notes = String(release.body ?? '').trim().slice(0, 1200);
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'info',
+    buttons: asset ? ['Update now', 'Later'] : ['Open download page', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+    message: `Closet ${latest} is available`,
+    detail: `You have ${VERSION}.${notes ? `\n\nWhat's new:\n${notes}` : ''}\n\nYour closet stays as it is.`,
+  });
+  if (response !== 0) return;
+  if (!asset) return shell.openExternal(release.html_url);
+  updating = true;
+  try {
+    const file = await download(asset, win);
+    await install(file, win);
+  } catch (e) {
+    await dialog.showMessageBox(win, {
+      type: 'warning',
+      message: 'The update could not be installed',
+      detail: `${e.message}\n\nYou can download it yourself from the release page instead.`,
+    });
+    shell.openExternal(release.html_url);
+  } finally {
+    updating = false;
+    if (!win.isDestroyed()) {
+      win.setProgressBar(-1);
+      win.setTitle('Closet');
+    }
+  }
+}
+
+/** Downloads a release file into a temporary folder, showing progress on the Dock / taskbar icon. */
+async function download(asset, win) {
+  const dir = path.join(app.getPath('temp'), 'closet-update');
+  await fs.promises.rm(dir, { recursive: true, force: true });
+  await fs.promises.mkdir(dir, { recursive: true });
+  const file = path.join(dir, path.basename(asset.name));
+  const res = await net.fetch(asset.browser_download_url, { headers: { 'User-Agent': 'Closet-app' } });
+  if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`);
+  const total = Number(res.headers.get('content-length')) || asset.size || 0;
+  const out = fs.createWriteStream(file);
+  let done = 0;
+  let shown = -1;
+  for await (const chunk of res.body) {
+    done += chunk.length;
+    if (!out.write(chunk)) await new Promise((r) => out.once('drain', r));
+    const pct = total ? Math.floor((done / total) * 100) : 0;
+    if (pct !== shown && !win.isDestroyed()) {
+      shown = pct;
+      win.setProgressBar(total ? done / total : 2); // 2 = "busy" without a percentage
+      win.setTitle(`Closet: downloading update ${total ? `${pct}%` : `${Math.round(done / 1e6)} MB`}`);
+    }
+  }
+  await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+  if (total && done < total) throw new Error('The download was incomplete.');
+  return file;
+}
+
+const run = promisify(execFile);
+
+async function install(file, win) {
+  if (process.platform === 'win32' && file.toLowerCase().endsWith('.exe')) {
+    // Silent install over the old version; --force-run opens Closet again when it's done.
+    spawn(file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+    app.quit();
+    return;
+  }
+  if (process.platform === 'darwin' && file.toLowerCase().endsWith('.dmg') && app.isPackaged) {
+    // This app: …/Closet.app/Contents/MacOS/Closet → …/Closet.app
+    const bundle = path.resolve(process.execPath, '..', '..', '..');
+    const mount = path.join(path.dirname(file), 'mount');
+    await fs.promises.mkdir(mount, { recursive: true });
+    try {
+      await run('hdiutil', ['attach', '-nobrowse', '-readonly', '-mountpoint', mount, file]);
+      const appName = (await fs.promises.readdir(mount)).find((n) => n.endsWith('.app'));
+      if (!appName) throw new Error('No app found in the download.');
+      // Copy next to the old app first, then swap, so a failure never leaves you without Closet.
+      const fresh = `${bundle}.new`;
+      const old = `${bundle}.old`;
+      await fs.promises.rm(fresh, { recursive: true, force: true });
+      await fs.promises.rm(old, { recursive: true, force: true });
+      await run('ditto', [path.join(mount, appName), fresh]);
+      await fs.promises.rename(bundle, old);
+      await fs.promises.rename(fresh, bundle);
+      await fs.promises.rm(old, { recursive: true, force: true });
+    } catch (e) {
+      // Usually: no permission to change the Applications folder. Fall back to the installer.
+      await run('hdiutil', ['detach', mount, '-force']).catch(() => {});
+      return openInstaller(file, win, e);
+    }
+    await run('hdiutil', ['detach', mount, '-force']).catch(() => {});
+    await dialog.showMessageBox(win, { type: 'info', message: 'Update installed', detail: 'Closet restarts now.' });
+    app.relaunch();
+    app.exit(0);
+    return;
+  }
+  return openInstaller(file, win);
+}
+
+/** The manual way: open the downloaded installer and say what to do. */
+async function openInstaller(file, win, why) {
+  const mac = process.platform === 'darwin';
+  await shell.openPath(file);
+  await dialog.showMessageBox(win, {
+    type: 'info',
+    message: 'Finish the update',
+    detail:
+      (why ? `Closet couldn't replace itself (${why.message}).\n\n` : '') +
+      (mac
+        ? 'The installer is open. Quit Closet (⌘Q), drag Closet into Applications, choose Replace, then open Closet again.'
+        : 'The installer is open. Follow its steps; Closet closes and the new version is installed.') +
+      '\n\nYour closet stays as it is.',
+  });
+}
+
 /** Sends a menu command (see src/lib/commands.ts) to the window. */
 function send(command) {
   return (_item, win) => {
@@ -217,7 +426,7 @@ function buildMenu() {
             label: 'Closet',
             submenu: [
               { role: 'about' },
-              { label: 'Check for Updates…', click: send('check-updates') },
+              { label: 'Check for Updates…', click: (_i, win) => checkForUpdates(win ?? BrowserWindow.getAllWindows()[0], false) },
               { type: 'separator' },
               go('Settings…', 'CmdOrCtrl+,', 'go:profile'),
               { type: 'separator' },
@@ -236,6 +445,8 @@ function buildMenu() {
         go('Add Clothes…', 'CmdOrCtrl+N', 'new-item'),
         go('New Outfit', 'CmdOrCtrl+Shift+N', 'new-outfit'),
         go('Pick an Outfit for Me', 'CmdOrCtrl+Shift+P', 'pick-outfit'),
+        { type: 'separator' },
+        go('Save', 'CmdOrCtrl+S', 'save'),
         { type: 'separator' },
         go('Export Closet…', 'CmdOrCtrl+E', 'export'),
         go('Import a Closet…', 'CmdOrCtrl+Shift+I', 'import'),
@@ -291,7 +502,7 @@ function buildMenu() {
       role: 'help',
       submenu: [
         go('Keyboard Shortcuts', 'CmdOrCtrl+/', 'shortcuts'),
-        ...(mac ? [] : [{ label: 'Check for Updates…', click: send('check-updates') }]),
+        ...(mac ? [] : [{ label: 'Check for Updates…', click: (_i, win) => checkForUpdates(win ?? BrowserWindow.getAllWindows()[0], false) }]),
       ],
     },
   ];
@@ -339,7 +550,11 @@ app.whenReady().then(() => {
   protocol.handle('photo', servePhoto);
   registerIpc();
   buildMenu();
-  createWindow();
+  const win = createWindow();
+  // Look for a new version a little after opening (can be turned off in Profile → Updates).
+  if (app.isPackaged && readSettings().autoUpdate !== false) {
+    setTimeout(() => !win.isDestroyed() && checkForUpdates(win, true), 8000);
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

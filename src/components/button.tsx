@@ -23,10 +23,11 @@ export function Button({
       accessibilityRole="button"
       disabled={busy || disabled}
       onPress={onPress}
-      style={[
+      style={({ hovered }: { hovered?: boolean }) => [
         styles.button,
         // backgroundSelected so secondary buttons also show up inside gray cards
         { backgroundColor: primary ? theme.tint : theme.backgroundSelected },
+        hovered && !(busy || disabled) && styles.hovered,
         (busy || disabled) && styles.dimmed,
       ]}>
       {busy ? (
@@ -41,5 +42,6 @@ export function Button({
 const styles = StyleSheet.create({
   button: { borderRadius: 10, padding: 14, alignItems: 'center' },
   dimmed: { opacity: 0.6 },
+  hovered: { opacity: 0.82 },
   text: { fontSize: 16, fontWeight: '600' },
 });

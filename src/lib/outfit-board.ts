@@ -9,7 +9,7 @@ export type Layout = { x: number; y: number; scale: number; rotation: number; z:
 
 export const BOARD_ASPECT = 3 / 4; // width / height
 
-type Slot = 'head' | 'top' | 'outer' | 'dress' | 'bottom' | 'feet' | 'side' | 'other';
+export type Slot = 'head' | 'top' | 'outer' | 'dress' | 'bottom' | 'feet' | 'side' | 'other';
 
 // Words in a Type tag name → where that kind of item goes on a body.
 const SLOT_WORDS: [Slot, string[]][] = [
@@ -34,7 +34,8 @@ const SLOT_SPOTS: Record<Slot, [number, number, number, number]> = {
   other: [0.16, 0.6, 0.24, 5],
 };
 
-function slotOf(typeNames: string[]): Slot {
+/** Where an item with these Type tags goes on a body. */
+export function slotOf(typeNames: string[]): Slot {
   const text = typeNames.join(' ').toLowerCase();
   for (const [slot, words] of SLOT_WORDS) if (words.some((w) => text.includes(w))) return slot;
   return 'other';

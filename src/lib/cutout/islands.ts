@@ -6,7 +6,7 @@
 const KEPT = 32; // alpha above this counts as kept
 
 /** Labels every kept piece. labels[i] = piece number (or -1); sizes[n] = pixels in piece n. */
-function pieces(rgba: Uint8ClampedArray, width: number, height: number) {
+export function pieces(rgba: Uint8ClampedArray, width: number, height: number) {
   const n = width * height;
   const labels = new Int32Array(n).fill(-1);
   const sizes: number[] = [];

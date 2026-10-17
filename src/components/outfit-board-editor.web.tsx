@@ -225,8 +225,9 @@ export function OutfitBoardEditor({
   });
   useEffect(() => {
     const listener = (e: KeyboardEvent) => onKey(e);
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
+    // Capture: runs before the app-wide Esc (= Cancel), so Esc only deselects the piece.
+    window.addEventListener("keydown", listener, true);
+    return () => window.removeEventListener("keydown", listener, true);
   }, []);
 
   const ordered = [...items].sort(

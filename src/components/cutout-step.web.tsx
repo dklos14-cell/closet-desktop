@@ -11,7 +11,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Chip } from '@/components/chips';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { defringe, removeGapAt, removePieceAt, removeStrayBits, trimEdges, unmixEdges } from '@/lib/cutout/islands';
+import { defringe, pieces, removeGapAt, removePieceAt, removeStrayBits, trimEdges, unmixEdges } from '@/lib/cutout/islands';
 import { subtractBackground } from '@/lib/cutout/subtract';
 import { showMessage } from '@/lib/dialogs';
 import { useCommands } from '@/lib/commands';
@@ -48,6 +48,11 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
   const viewportRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<HTMLCanvasElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
+  // Wand: shows every separate piece (orange) and the one under the mouse (red).
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const islands = useRef<{ version: number; labels: Int32Array; sizes: number[]; main: number } | null>(null);
+  const hoverPiece = useRef(-2);
+  const [extraPieces, setExtraPieces] = useState(0);
   const photo = useRef<HTMLCanvasElement | null>(null);
   const mask = useRef<HTMLCanvasElement | null>(null);
   const scratch = useRef<HTMLCanvasElement | null>(null);
@@ -123,8 +128,9 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
   // ---- zoom / pan ----
   function applyView(next: View2D) {
     view.current = next;
-    const canvas = viewRef.current;
-    if (canvas) canvas.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
+    for (const canvas of [viewRef.current, overlayRef.current]) {
+      if (canvas) canvas.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
+    }
   }
 
   const fit = useCallback(() => {
@@ -242,9 +248,11 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
         scratch.current = make();
         const pctx = photo.current.getContext('2d', { willReadFrequently: true })!;
         pctx.drawImage(img, 0, 0, w, h);
-        if (viewRef.current) {
-          viewRef.current.width = w;
-          viewRef.current.height = h;
+        for (const c of [viewRef.current, overlayRef.current]) {
+          if (c) {
+            c.width = w;
+            c.height = h;
+          }
         }
 
         const { data } = pctx.getImageData(0, 0, w, h);
@@ -288,8 +296,9 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
   // ours when the editor closes, or after a few items saving can get stuck and taps feel slow.
   useEffect(() => {
     const view = viewRef.current;
+    const overlay = overlayRef.current;
     return () => {
-      for (const c of [photo.current, mask.current, scratch.current, trimmed.current, view]) {
+      for (const c of [photo.current, mask.current, scratch.current, trimmed.current, view, overlay]) {
         if (c) {
           c.width = 0;
           c.height = 0;
@@ -316,6 +325,75 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     }
     redraw();
   }, [maskVersion, edgeTrim, cleanEdges, ready, redraw]);
+
+  // ---- wand overlay ----
+  /** The separate pieces of the current mask (worked out again only after the mask changes). */
+  function currentIslands() {
+    const m = mask.current;
+    if (!m) return null;
+    if (islands.current?.version !== maskVersion) {
+      const { data } = m.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, m.width, m.height);
+      const { labels, sizes } = pieces(data, m.width, m.height);
+      const main = sizes.indexOf(Math.max(...sizes));
+      islands.current = { version: maskVersion, labels, sizes, main };
+    }
+    return islands.current;
+  }
+
+  /** Paints the wand overlay: every leftover piece orange, the one under the mouse (`hover`) red. */
+  function drawOverlay(hover: number) {
+    const c = overlayRef.current;
+    const isl = currentIslands();
+    if (!c || !isl || !c.width) return;
+    hoverPiece.current = hover;
+    setExtraPieces(Math.max(0, isl.sizes.length - 1));
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(c.width, c.height);
+    const { labels, main } = isl;
+    for (let i = 0; i < labels.length; i++) {
+      const l = labels[i];
+      if (l < 0) continue;
+      const o = i * 4;
+      if (l === hover) {
+        img.data[o] = 255;
+        img.data[o + 1] = 40;
+        img.data[o + 2] = 40;
+        img.data[o + 3] = 150;
+      } else if (l !== main) {
+        img.data[o] = 255;
+        img.data[o + 1] = 140;
+        img.data[o + 2] = 0;
+        img.data[o + 3] = 170;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // Wand selected: show the pieces (again after every change to the mask).
+  useEffect(() => {
+    const c = overlayRef.current;
+    if (!c || !ready) return;
+    if (tool !== 'wand') {
+      c.style.display = 'none';
+      return;
+    }
+    c.style.display = 'block';
+    drawOverlay(-1);
+    // currentIslands / drawOverlay read refs; they only need to run again when these change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, maskVersion, ready]);
+
+  /** Wand: highlight the piece under the mouse. */
+  function hoverWand(p: Point) {
+    const isl = currentIslands();
+    const m = mask.current;
+    if (!isl || !m) return;
+    const c = toCanvas(p);
+    const x = Math.floor(c.x);
+    const y = Math.floor(c.y);
+    const label = x >= 0 && y >= 0 && x < m.width && y < m.height ? isl.labels[y * m.width + x] : -1;
+    if (label !== hoverPiece.current) drawOverlay(label);
+  }
 
   function rerunAuto(tol: number) {
     setBusy(true);
@@ -468,6 +546,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     const p = local(e);
     if (e.pointerType === 'mouse' || gesture.current.kind === 'stroke' || gesture.current.kind === 'pending')
       moveCursor(brushPoint(e, p));
+    if (tool === 'wand' && gesture.current.kind === 'none' && !spaceHeld) hoverWand(p);
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, p);
     let g = gesture.current;
@@ -548,7 +627,6 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     else if (k === '=' || k === '+') zoomBy(1.5);
     else if (k === '-') zoomBy(1 / 1.5);
     else if (k === 'enter') finish();
-    else if (k === 'escape') onCancel();
     else return;
     e.preventDefault();
   });
@@ -557,6 +635,8 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
     else if (command === 'zoom-in') zoomBy(1.5);
     else if (command === 'zoom-out') zoomBy(1 / 1.5);
     else if (command === 'zoom-fit') fit();
+    else if (command === 'save') finish();
+    else if (command === 'escape') onCancel();
     else return command === 'redo'; // no redo here, but don't pass it to a text box either
     return true;
   });
@@ -658,6 +738,7 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
         onPointerCancel={onPointerUp}
         onPointerLeave={(e) => {
           if (e.pointerType === 'mouse') moveCursor(null);
+          if (tool === 'wand' && hoverPiece.current !== -1) drawOverlay(-1);
         }}
         style={{
           ...checkerboard(theme.backgroundElement),
@@ -666,11 +747,15 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
           overflow: 'hidden',
           touchAction: 'none',
           // Always show the pointer (the brush circle is drawn around it for Erase / Restore).
-          cursor: tool === 'move' || spaceHeld ? 'grab' : 'crosshair',
+          cursor: tool === 'move' || spaceHeld ? 'grab' : tool === 'wand' ? WAND_CURSOR : tool === 'gap' ? GAP_CURSOR : 'crosshair',
         }}>
         <canvas
           ref={viewRef}
           style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', pointerEvents: 'none' }}
+        />
+        <canvas
+          ref={overlayRef}
+          style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', pointerEvents: 'none', display: 'none' }}
         />
         <div
           ref={cursorRef}
@@ -716,6 +801,18 @@ export function CutoutStep({ photoUri, initialMaskUri, onDone, onCancel }: Cutou
           <Chip text="+" selected={false} onPress={() => zoomBy(1.5)} />
           <Slider label="Brush size" min={8} max={80} step={1} value={brush} onChange={setBrush} />
         </View>
+        {tool === 'wand' ? (
+          <Text style={[styles.hint, { color: theme.text }]}>
+            🪄{' '}
+            {extraPieces === 0
+              ? 'No leftover pieces: everything kept is one piece.'
+              : `${extraPieces} leftover piece${extraPieces === 1 ? '' : 's'} shown in orange. Click one to delete it (it turns red under the mouse).`}
+          </Text>
+        ) : tool === 'gap' ? (
+          <Text style={[styles.hint, { color: theme.text }]}>
+            🎯 Click leftover background inside the outline (between legs, inside a strap) to clear that patch.
+          </Text>
+        ) : null}
         <Text style={[styles.shortcuts, { color: theme.textSecondary }]}>
           Pinch or {MOD}+scroll to zoom · two-finger scroll or hold Space to move · E erase · R restore ·
           W wand · G gap · [ ] brush size · {MOD}Z undo · F fit · Enter done · Esc cancel
@@ -801,6 +898,30 @@ function Slider({
   );
 }
 
+/** Pointer pictures for the Wand and Gap tools; the hot spot is the tip / the middle. */
+const svgCursor = (svg: string, x: number, y: number, fallback: string) =>
+  `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${x} ${y}, ${fallback}`;
+const WAND_CURSOR = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+    <path d="M3 25 L17 11" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M3 25 L17 11" stroke="#6b3fa0" stroke-width="3" stroke-linecap="round"/>
+    <path d="M21 1 L22.6 5.4 L27 7 L22.6 8.6 L21 13 L19.4 8.6 L15 7 L19.4 5.4 Z" fill="#ffcc00" stroke="#000" stroke-width="1"/>
+  </svg>`,
+  21,
+  7,
+  'crosshair',
+);
+const GAP_CURSOR = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
+    <circle cx="13" cy="13" r="9" fill="none" stroke="#fff" stroke-width="4"/>
+    <circle cx="13" cy="13" r="9" fill="none" stroke="#e5484d" stroke-width="2"/>
+    <circle cx="13" cy="13" r="2.5" fill="#e5484d" stroke="#fff" stroke-width="1"/>
+  </svg>`,
+  13,
+  13,
+  'crosshair',
+);
+
 /** Gray/white squares behind the picture so transparent areas are visible. */
 function checkerboard(color: string) {
   return {
@@ -848,6 +969,7 @@ const styles = StyleSheet.create({
   slider: { flex: 1, minWidth: 120, gap: 2 },
   sliderLabel: { fontSize: 12, fontWeight: '600' },
   shortcuts: { fontSize: 12, lineHeight: 17 },
+  hint: { fontSize: 14, fontWeight: '600' },
   moreToggle: { fontSize: 14, fontWeight: '600' },
   more: { gap: Spacing.two },
 });

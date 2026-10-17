@@ -20,10 +20,11 @@ export function Chip({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      style={[
+      style={({ hovered }: { hovered?: boolean }) => [
         styles.chip,
         // backgroundSelected (not backgroundElement) so chips also show up inside gray cards
         { backgroundColor: selected ? theme.tint : theme.backgroundSelected },
+        hovered && styles.hovered,
       ]}>
       <Text style={[styles.chipText, { color: selected ? '#fff' : theme.text }]}>{text}</Text>
     </Pressable>
@@ -115,5 +116,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Spacing.two },
   wrap: { flexWrap: 'wrap' },
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  hovered: { opacity: 0.78 },
   chipText: { fontSize: 14 },
 });

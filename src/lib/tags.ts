@@ -2,17 +2,18 @@
 // and supabase/migrations/20261014000000_custom_tags.sql). Warmth and wear status stay fixed
 // fields on the item. Keep these lists in sync with the CHECK constraints in the migrations.
 
-export const TAG_KINDS = ['type', 'color', 'pattern', 'season', 'occasion', 'other', 'favorite'] as const;
+export const TAG_KINDS = ['type', 'color', 'pattern', 'style', 'season', 'occasion', 'other', 'favorite'] as const;
 export type TagKind = (typeof TAG_KINDS)[number];
 
 /** Groups shown when tagging an item / an outfit. "favorite" = the user's favorite lists. */
-export const ITEM_TAG_KINDS: readonly TagKind[] = ['type', 'color', 'pattern', 'season', 'occasion', 'other'];
+export const ITEM_TAG_KINDS: readonly TagKind[] = ['type', 'color', 'pattern', 'style', 'season', 'occasion', 'other'];
 export const OUTFIT_TAG_KINDS: readonly TagKind[] = ['occasion', 'season', 'other'];
 
 export const TAG_KIND_TITLES: Record<TagKind, string> = {
   type: 'Type',
   color: 'Colors',
   pattern: 'Pattern',
+  style: 'Style',
   season: 'Seasons',
   occasion: 'Occasions',
   other: 'Other',

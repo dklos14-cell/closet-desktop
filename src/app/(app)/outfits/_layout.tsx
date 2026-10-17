@@ -12,6 +12,7 @@ export default function OutfitsLayout() {
     <Stack screenOptions={{ headerRight: () => <MenuButton /> }}>
       <Stack.Screen name="index" options={{ title: 'Outfits', headerLargeTitle: true, headerLeft: () => <MenuButton /> }} />
       <Stack.Screen name="edit" options={{ title: 'Outfit', presentation: 'modal' }} />
+      <Stack.Screen name="pick" options={{ title: 'Pick an outfit for me', presentation: 'modal' }} />
     </Stack>
   );
 }

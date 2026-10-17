@@ -167,7 +167,56 @@ export default function ProfileScreen() {
       <WeatherSettings />
 
       <ClosetFileCard />
+
+      <UpdatesCard />
     </ScrollView>
+  );
+}
+
+/** This version, "Check for updates", and whether Closet looks for them by itself. */
+function UpdatesCard() {
+  const theme = useTheme();
+  const [info, setInfo] = useState<{ version: string; autoUpdate: boolean } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    desktop().appInfo().then(setInfo);
+  }, []);
+
+  async function check() {
+    setChecking(true);
+    try {
+      await desktop().checkForUpdates(); // the answer comes as a window from the desktop shell
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  function setAuto(autoUpdate: boolean) {
+    setInfo((i) => (i ? { ...i, autoUpdate } : i));
+    desktop()
+      .setAutoUpdate(autoUpdate)
+      .catch((e) => showMessage('Could not save', e.message));
+  }
+
+  return (
+    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+      <Text style={[styles.title, { color: theme.textSecondary }]}>Updates</Text>
+      <Text style={{ color: theme.text }}>Closet {info?.version ?? '…'}</Text>
+      <Button title="Check for updates" variant="secondary" busy={checking} onPress={check} />
+      <Segmented
+        options={[
+          { value: true, label: 'Check when Closet opens' },
+          { value: false, label: 'Only when I ask' },
+        ]}
+        value={info?.autoUpdate ?? true}
+        onChange={setAuto}
+      />
+      <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
+        A new version downloads and installs in a minute, then Closet restarts. Your closet, photos
+        and settings stay exactly as they are.
+      </Text>
+    </View>
   );
 }
 
@@ -356,7 +405,7 @@ function WeatherSettings() {
   );
 }
 
-function Segmented<T extends string | number>({
+function Segmented<T extends string | number | boolean>({
   options,
   value,
   onChange,

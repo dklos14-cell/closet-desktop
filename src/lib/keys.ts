@@ -15,3 +15,17 @@ export function isTyping(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 }
+
+/**
+ * Props that make a Pressable open `show` on right-click (two-finger click on a trackpad)
+ * instead of the browser's own menu. Spread them onto the Pressable.
+ */
+export function contextMenu(show: (() => void) | undefined): object {
+  if (!show) return {};
+  return {
+    onContextMenu: (e: { preventDefault(): void }) => {
+      e.preventDefault();
+      show();
+    },
+  };
+}

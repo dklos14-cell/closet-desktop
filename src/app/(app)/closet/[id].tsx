@@ -12,6 +12,7 @@ import { deleteItem, fetchItem, updateItem, type ItemDetail } from '@/lib/items'
 import { pickFields, type ItemFields } from '@/lib/tags';
 import { showMessage, confirmAction } from '@/lib/dialogs';
 import { cancelEditing, goBack } from '@/lib/navigation';
+import { useEditorShortcuts } from '@/lib/commands';
 
 export default function ItemDetailScreen() {
   const theme = useTheme();
@@ -52,6 +53,8 @@ export default function ItemDetailScreen() {
       setBusy(null);
     }
   }
+
+  useEditorShortcuts({ save, cancel, enabled: busy === null });
 
   async function confirmDelete() {
     if (!item) return;

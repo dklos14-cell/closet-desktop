@@ -144,10 +144,31 @@ the first time. It's safe to open:
 2. If Windows shows "Windows protected your PC", click **More info → Run anyway**.
 3. Choose where to install. A desktop shortcut is added.
 
-### Updating someone's app
+### Publishing an update (everyone gets it automatically)
 
-Send them the new installer. Installing over the old one keeps their closet (it's in the folder
-above, not in the app). Asking them to export first is still a good idea.
+Installed copies don't change when you push code to GitHub. They look for a newer **GitHub
+release** of this repo when they open (Profile → Updates can turn that off), and under
+**Closet → Check for Updates…** (Mac) / **Help → Check for Updates…** (Windows).
+
+1. Raise `"version"` in `package.json` (e.g. `1.1.0` → `1.2.0`). Updates are found by comparing
+   this number, so it must go up.
+2. `npm run dist && npm run share`
+3. On GitHub: **Releases → Draft a new release**, tag `v1.2.0` (the same number), write a few
+   lines about what's new (people see them in the update window), and attach these files:
+   - `release/Closet-1.2.0-universal.dmg` and `release/Closet Setup 1.2.0.exe`: the updater
+     downloads these;
+   - `release/Closet for Mac.zip` and `release/Closet for Windows.zip`: for new people
+     installing by hand.
+4. Publish. Within a day everyone's Closet offers **Update now**:
+   - **Mac:** downloads the .dmg, swaps the new Closet.app in and restarts. If it isn't allowed
+     to change the Applications folder, it opens the .dmg and says what to do.
+   - **Windows:** downloads the Setup .exe and runs it silently; Closet closes and reopens.
+
+The repo must be **public** for this (and for the download link at the top of this page):
+GitHub answers "not found" to anyone else. Nothing private is in it; closets live on each
+computer, never in the repo.
+
+Updating never touches the closet: it's in the data folder above, not inside the app.
 
 ### Keeping the closet somewhere else
 
@@ -172,6 +193,8 @@ src/
   lib/db.ts        the closet in memory + saving closet.json; deleting, wear counts, monthly clean-up
   lib/desktop.ts   types for the preload functions; photoUrl()
   lib/closet-file.ts  Export / Import of the closet .zip
+  lib/outfit-picker.ts  "Pick an outfit for me": scoring pieces and how they go together
+  lib/commands.ts  menu commands, Esc / ⌘S for editors, shortcut list
   lib/pick-image.ts   choosing a photo; HEIC → JPEG (the converter loads only when needed)
   lib/items.ts, outfits.ts, calendar.ts, recurring.ts, tag-store.tsx, profile-store.tsx
                    same functions as the website, reading and writing db.ts instead of Supabase

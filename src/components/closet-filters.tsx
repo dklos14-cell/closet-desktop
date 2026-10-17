@@ -8,7 +8,7 @@ import type { ItemWithUrl } from '@/lib/items';
 import { useTags } from '@/lib/tag-store';
 import type { TagKind } from '@/lib/tags';
 
-export const FILTER_KINDS: TagKind[] = ['type', 'color', 'pattern', 'season'];
+export const FILTER_KINDS: TagKind[] = ['type', 'color', 'pattern', 'style', 'season'];
 
 /**
  * Search + tag filters for a list of items (Closet screen and "Add from closet").

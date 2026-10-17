@@ -11,6 +11,7 @@ import { addEntry } from '@/lib/calendar';
 import { fetchOutfits, type OutfitWithItems } from '@/lib/outfits';
 import { showMessage } from '@/lib/dialogs';
 import { cancelEditing, goBack } from '@/lib/navigation';
+import { useEditorShortcuts } from '@/lib/commands';
 
 /** Pick which outfit was worn on `date`, with an optional note. */
 export default function LogOutfitScreen() {
@@ -45,6 +46,8 @@ export default function LogOutfitScreen() {
       setSaving(false);
     }
   }
+
+  useEditorShortcuts({ save, cancel, enabled: !saving });
 
   if (!outfits) return <ActivityIndicator style={{ flex: 1, backgroundColor: theme.background }} />;
 
